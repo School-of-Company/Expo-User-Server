@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: expo-user-server
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/expo_user}
+    username: ${DB_USERNAME:expo_user}
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
