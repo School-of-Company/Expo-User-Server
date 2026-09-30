@@ -1,6 +1,6 @@
 ---
 name: docker
-description: Dockerfile and docker-compose authoring guide — multi-stage builds, layer caching, security best practices, and compose service wiring. Examples for JVM and Node; the same principles apply to any stack.
+description: Dockerfile and docker-compose authoring guide for this project's JVM/Gradle stack — multi-stage builds, layer caching, security best practices, and compose service wiring.
 ---
 
 # Docker Guide
@@ -37,31 +37,6 @@ ENTRYPOINT ["java", "-jar", "app.jar"]
 - Run as non-root: `RUN adduser --disabled-password app && USER app`
 - Never `COPY . .` before installing dependencies
 
-### Node / TypeScript
-
-Same three rules, different manifests — install from the lockfile, then build, then ship only what runs:
-
-```dockerfile
-FROM node:22-slim AS builder
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-FROM node:22-slim
-WORKDIR /app
-ENV NODE_ENV=production
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
-COPY --from=builder /app/dist ./dist
-USER node
-CMD ["node", "dist/main.js"]
-```
-
-For Python, the same shape holds with `requirements.txt`/`pyproject.toml` copied before the source, and
-the venv or wheels carried into the runtime stage.
-
 ## docker-compose.yml
 
 The app's own config keys come from its framework (`SPRING_DATASOURCE_URL`, `DATABASE_URL`, …) — read
@@ -76,7 +51,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL: postgres://app:app@db:5432/app   # replace with this project's key
+      DATABASE_URL: postgres://app:app@db:5432/app # replace with this project's key
     depends_on:
       db:
         condition: service_healthy
@@ -95,22 +70,12 @@ services:
 
 ## .dockerignore
 
-Exclude version control, build output, dependencies, and local env files — the exact names depend on
-the stack:
+Exclude version control, build output, and local env files:
 
 ```
 .git
 *.log
 .env*
-# JVM
 build/
 .gradle/
-target/
-# Node
-node_modules/
-dist/
-.next/
-# Python
-__pycache__/
-.venv/
 ```
