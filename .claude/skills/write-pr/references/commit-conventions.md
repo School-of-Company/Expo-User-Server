@@ -5,7 +5,7 @@
 `type(scope): description`
 
 - **Type**: `feat` / `fix` / `refactor` / `docs` / `chore` / `test`
-- **Scope**: `auth` / `admin` / `trainee` / `participant` (도메인 기준). 어느 도메인에도 속하지 않는 변경(설정, 툴링, 에이전트/스킬 문서)은 `global`
+- **Scope**: `auth` / `user` / `training` / `participation` (도메인 기준, 기존 `admin` / `trainee` / `participant`도 CI에서 허용). 어느 도메인에도 속하지 않는 변경(설정, 툴링, 에이전트/스킬 문서)은 `global`
 - **Description**: 한글, 명사형 종결, 마침표 없음
   - Good examples: `로그인 요청 검증 추가`, `관리자 승인 대기 목록 조회 구현`
 - Subject line only (no body) — breaking change일 때만 예외적으로 본문에 `BREAKING CHANGE: <설명>` 추가
@@ -14,7 +14,7 @@
 
 `[scope] description`
 
-- Scope는 커밋의 scope와 동일한 어휘 사용, 소문자 대괄호로 표기: `[auth]`, `[admin]`, `[trainee]`, `[participant]`
+- Scope는 커밋의 scope와 동일한 어휘 사용, 소문자 대괄호로 표기: `[auth]`, `[user]`, `[training]`, `[participation]`
 - 여러 도메인에 걸친 변경은 `[global]`, 파이프라인 작업은 `[ci/cd]` 사용
 
 ## Version Bump Rule (releases to `main`)

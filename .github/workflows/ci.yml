@@ -17,8 +17,8 @@ jobs:
           if [[ "$BASE_REF" == "main" && "$TITLE" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             exit 0
           fi
-          if [[ ! "$TITLE" =~ ^\[(auth|admin|trainee|participant|global|ci/cd)\]\ .+ ]]; then
-            echo "PR 제목은 '[scope] description' 형식이어야 합니다 (scope: auth/admin/trainee/participant/global/ci-cd)." >&2
+          if [[ ! "$TITLE" =~ ^\[(auth|user|training|participation|admin|trainee|participant|global|ci/cd)\]\ .+ ]]; then
+            echo "PR 제목은 '[scope] description' 형식이어야 합니다 (scope: auth/user/training/participation/admin/trainee/participant/global/ci-cd)." >&2
             echo "main으로 가는 릴리즈 PR은 'vX.Y.Z' 형식도 허용됩니다." >&2
             echo "현재 제목: $TITLE" >&2
             exit 1
