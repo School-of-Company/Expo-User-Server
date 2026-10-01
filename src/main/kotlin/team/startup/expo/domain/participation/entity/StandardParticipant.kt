@@ -22,29 +22,32 @@ import java.time.LocalDateTime
     indexes = [Index(columnList = "phone_number")],
 )
 class StandardParticipant(
+    @field:Id
+    @field:GeneratedValue(strategy = GenerationType.IDENTITY)
+    val id: Long? = null,
     // Expo 서비스 소유 — FK 없이 ID만 보관한다
-    @Column(name = "expo_id", nullable = false, length = 36)
+    @field:Column(name = "expo_id", nullable = false, length = 36)
     val expoId: String,
-    @Column(nullable = false, length = 10)
+    @field:Column(nullable = false, length = 10)
     val name: String,
-    @Column(nullable = false, length = 15)
+    @field:Column(name = "phone_number", nullable = false, length = 15)
     val phoneNumber: String,
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
+    @field:JdbcTypeCode(SqlTypes.JSON)
+    @field:Column(name = "information_json", columnDefinition = "jsonb")
     val informationJson: String? = null,
-    @Column(nullable = false)
+    @field:Column(name = "personal_information_status", nullable = false)
     val personalInformationStatus: Boolean,
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
+    @field:Enumerated(EnumType.STRING)
+    @field:Column(name = "application_type", nullable = false, length = 10)
     val applicationType: ApplicationType,
-    @Column(nullable = false)
-    var smsTryTime: Int = 0,
-    @Column(nullable = false)
+    @field:Column(name = "application_date", nullable = false)
     val applicationDate: LocalDateTime,
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
+    smsTryTime: Int = 0,
 ) {
+    @field:Column(name = "sms_try_time", nullable = false)
+    var smsTryTime: Int = smsTryTime
+        protected set
+
     fun plusSmsTryTime() {
         smsTryTime++
     }

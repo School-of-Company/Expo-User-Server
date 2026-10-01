@@ -21,17 +21,17 @@ import java.time.LocalDateTime
     uniqueConstraints = [UniqueConstraint(columnNames = ["expo_id", "trainee_id", "attendance_date"])],
 )
 class TraineeParticipation(
-    @Column(nullable = false)
+    @field:Id
+    @field:GeneratedValue(strategy = GenerationType.IDENTITY)
+    val id: Long? = null,
+    @field:Column(name = "entry_time", nullable = false)
     val entryTime: LocalDateTime,
-    @Column(nullable = false)
+    @field:Column(name = "attendance_date", nullable = false)
     val attendanceDate: LocalDate,
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "trainee_id")
-    @OnDelete(action = OnDeleteAction.CASCADE)
+    @field:ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @field:JoinColumn(name = "trainee_id")
+    @field:OnDelete(action = OnDeleteAction.CASCADE)
     val trainee: Trainee,
-    @Column(name = "expo_id", nullable = false, length = 36)
+    @field:Column(name = "expo_id", nullable = false, length = 36)
     val expoId: String,
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
 )
