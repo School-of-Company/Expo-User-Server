@@ -31,7 +31,7 @@ Read `${CLAUDE_SKILL_DIR}/references/commit-conventions.md` for commit type and 
 **Title** — the format depends on the base branch:
 
 - Base is `develop` (or any non-`main` base): generate 3 options in the format `[scope] description`.
-  - Scope: the domain the changed files belong to — `auth`, `admin`, `trainee`, or `participant`. Lowercase, wrapped in brackets: `[auth]`, `[admin]`, `[trainee]`, `[participant]`. Use `[global]` for changes outside any domain (config, tooling, agent/skill docs) and `[ci/cd]` for pipeline work.
+  - Scope: the domain the changed files belong to — `auth`, `user`, `training`, or `participation`. Lowercase, wrapped in brackets: `[auth]`, `[user]`, `[training]`, `[participation]`. The legacy `admin`, `trainee`, `participant` scopes are still accepted by CI. Use `[global]` for changes outside any domain (config, tooling, agent/skill docs) and `[ci/cd]` for pipeline work.
   - Description: Korean, concise, no emojis, max 50 characters total
   - Wrap class names, method names, annotations, file names, and technical terms in backticks (e.g., `@Transactional`, `AdminService`, `SKILL.md`)
 - Base is `main`: this is a release PR. Title is a single bare `vX.Y.Z` (no scope brackets, no description) — see `${CLAUDE_SKILL_DIR}/references/commit-conventions.md` for how to pick X/Y/Z from the commits going in, and bump `version` in `build.gradle.kts` to match in the same PR.
