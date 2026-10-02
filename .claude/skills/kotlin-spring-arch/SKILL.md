@@ -54,7 +54,7 @@ fun findAllWithRelated(): List<Entity>
 ### Use ExpectedException Directly
 ```kotlin
 val apiKey = repository.findById(id).orElseThrow {
-    ExpectedException("API key를 찾을 수 없습니다.", HttpStatus.NOT_FOUND)
+    ExpectedException(HttpStatus.NOT_FOUND, "API key를 찾을 수 없습니다.")
 }
 ```
 
