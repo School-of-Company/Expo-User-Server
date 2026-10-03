@@ -8,22 +8,31 @@ import org.springframework.http.MediaType
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+import team.startup.expo.domain.user.entity.Authority
+import team.startup.expo.domain.user.repository.AdminRepository
 import team.startup.expo.global.exception.ErrorResponse
 import tools.jackson.databind.ObjectMapper
 
 /**
- * auth 도메인이 아직 없어 로그인/회원가입 경로를 열어줄 대상이 없다 — 지금은 actuator만
- * 허용하고 나머지는 전부 막아둔다. auth 컨트롤러가 생기면 `/auth`, `/auth/signin`을
- * permitAll로 추가하고, JWT 인증 필터를 이 체인에 연결해야 한다.
+ * 인증은 gateway가 검증해 전달한 `X-User-Id`로 한다(`GatewayHeaderAuthenticationFilter`).
+ * 이 서비스는 토큰을 파싱하지 않는다. 명시하지 않은 경로는 전부 막아 두고, 도메인을 추가할 때
+ * 경로별 규칙을 여기에 더한다.
  */
 @Configuration
 @EnableWebSecurity
 class SecurityConfig {
     @Bean
+    fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
+
+    @Bean
     fun securityFilterChain(
         http: HttpSecurity,
         objectMapper: ObjectMapper,
+        adminRepository: AdminRepository,
     ): SecurityFilterChain {
         http
             .csrf { it.disable() }
@@ -31,6 +40,7 @@ class SecurityConfig {
             .formLogin { it.disable() }
             .httpBasic { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+            .addFilterBefore(GatewayHeaderAuthenticationFilter(adminRepository), UsernamePasswordAuthenticationFilter::class.java)
             .exceptionHandling { exceptions ->
                 exceptions
                     .authenticationEntryPoint { _, response, _ ->
@@ -42,6 +52,12 @@ class SecurityConfig {
                 requests
                     .requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/**", "/actuator/prometheus")
                     .permitAll()
+                    .requestMatchers(HttpMethod.POST, "/auth", "/auth/signin")
+                    .permitAll()
+                    .requestMatchers(HttpMethod.PATCH, "/auth")
+                    .permitAll()
+                    .requestMatchers(HttpMethod.DELETE, "/auth")
+                    .hasAuthority(Authority.ROLE_ADMIN.name)
                     .anyRequest()
                     .denyAll()
             }
