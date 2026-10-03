@@ -15,6 +15,8 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.annotation.DirtiesContext
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.junit.jupiter.Container
@@ -30,6 +32,7 @@ import team.startup.expo.domain.training.entity.TraineeSurveyAnswer
 import team.startup.expo.domain.user.entity.Admin
 import team.startup.expo.domain.user.entity.Authority
 import team.startup.expo.domain.user.entity.Status
+import team.startup.expo.support.IntegrationTestSupport
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -247,6 +250,13 @@ class UserPersistenceTests {
         @ServiceConnection
         @JvmStatic
         val postgres = PostgreSQLContainer("postgres:17-alpine")
+
+        // 애플리케이션 컨텍스트가 함께 뜨므로 JWT 서명 키가 필요하다
+        @JvmStatic
+        @DynamicPropertySource
+        fun jwtProperties(registry: DynamicPropertyRegistry) {
+            registry.add("jwt.private-key") { IntegrationTestSupport.generatePrivateKeyPem() }
+        }
 
         private fun admin(
             nickname: String = "admin1",
