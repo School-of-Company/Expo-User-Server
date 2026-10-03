@@ -1,0 +1,64 @@
+package team.startup.expo.support
+
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Import
+import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
+import org.testcontainers.containers.GenericContainer
+import org.testcontainers.postgresql.PostgreSQLContainer
+import java.security.KeyPairGenerator
+import java.util.Base64
+
+/**
+ * 실제 애플리케이션 컨텍스트를 PostgreSQL과 Redis 컨테이너 위에서 띄운다. 같은 설정을 쓰는 테스트 클래스는
+ * 컨텍스트와 컨테이너를 공유한다.
+ */
+@SpringBootTest(properties = ["eureka.client.enabled=false"])
+@AutoConfigureMockMvc
+@Import(IntegrationTestSupport.ContainersConfig::class)
+abstract class IntegrationTestSupport {
+    @Autowired
+    protected lateinit var jdbcTemplate: JdbcTemplate
+
+    protected fun clearAdmins() {
+        jdbcTemplate.execute("TRUNCATE TABLE tb_admin RESTART IDENTITY CASCADE")
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    class ContainersConfig {
+        @Bean
+        @ServiceConnection
+        fun postgres(): PostgreSQLContainer = PostgreSQLContainer("postgres:17-alpine")
+
+        @Bean
+        @ServiceConnection(name = "redis")
+        fun redis(): GenericContainer<*> = GenericContainer("redis:8-alpine").withExposedPorts(REDIS_PORT)
+    }
+
+    companion object {
+        const val REDIS_PORT = 6379
+
+        @JvmStatic
+        @DynamicPropertySource
+        fun jwtProperties(registry: DynamicPropertyRegistry) {
+            registry.add("jwt.private-key") { generatePrivateKeyPem() }
+        }
+
+        fun generatePrivateKeyPem(): String {
+            val key =
+                KeyPairGenerator
+                    .getInstance("RSA")
+                    .apply { initialize(2048) }
+                    .generateKeyPair()
+                    .private
+            val body = Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(key.encoded)
+            return "-----BEGIN PRIVATE KEY-----\n$body\n-----END PRIVATE KEY-----"
+        }
+    }
+}
