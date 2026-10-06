@@ -45,10 +45,13 @@ abstract class IntegrationTestSupport {
     companion object {
         const val REDIS_PORT = 6379
 
+        const val INTERNAL_TOKEN = "test-internal-token-0123456789abcdef"
+
         @JvmStatic
         @DynamicPropertySource
         fun jwtProperties(registry: DynamicPropertyRegistry) {
             registry.add("jwt.private-key") { generatePrivateKeyPem() }
+            registry.add("internal.token") { INTERNAL_TOKEN }
         }
 
         /** 서비스가 서명한 토큰을 테스트에서 검증할 수 있도록 키쌍을 한 번만 만들어 공유한다. */

@@ -256,6 +256,7 @@ class UserPersistenceTests {
         @DynamicPropertySource
         fun jwtProperties(registry: DynamicPropertyRegistry) {
             registry.add("jwt.private-key") { IntegrationTestSupport.generatePrivateKeyPem() }
+            registry.add("internal.token") { IntegrationTestSupport.INTERNAL_TOKEN }
         }
 
         private fun admin(
