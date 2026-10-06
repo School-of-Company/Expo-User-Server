@@ -19,18 +19,19 @@ class ReissueTokenServiceImpl(
     override fun execute(refreshToken: String): TokenResDto {
         if (!refreshToken.startsWith(BEARER_PREFIX)) throw invalidToken()
 
-        val adminId =
-            refreshTokenService.findAdminId(refreshToken.removePrefix(BEARER_PREFIX).trim())
+        // 확인과 교체가 한 번에 처리된다. 그 사이에 로그아웃이 끼어들면 교체가 실패해 401이 된다.
+        val rotated =
+            refreshTokenService.rotate(refreshToken.removePrefix(BEARER_PREFIX).trim())
                 ?: throw invalidToken()
         val admin =
-            adminRepository.findById(adminId).orElse(null)
+            adminRepository.findById(rotated.adminId).orElse(null)
                 ?: run {
                     // 탈퇴한 관리자의 refresh token이 남아 있으면 정리한다
-                    refreshTokenService.revoke(adminId)
+                    refreshTokenService.revoke(rotated.adminId)
                     throw invalidToken()
                 }
 
-        return tokenIssuer.issue(admin)
+        return tokenIssuer.withRefreshToken(admin, rotated.token)
     }
 
     private fun invalidToken() = ExpectedException(HttpStatus.UNAUTHORIZED, "토큰이 만료되었거나 유효하지 않습니다.")
