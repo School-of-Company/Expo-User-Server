@@ -72,10 +72,28 @@ class SignInTests : IntegrationTestSupport() {
 
         val access = LocalDateTime.parse(body["accessTokenExpiresIn"].asString())
         val refresh = LocalDateTime.parse(body["refreshTokenExpiresIn"].asString())
-        access.isAfter(nowUtc.plusHours(23)) shouldBe true
-        access.isBefore(nowUtc.plusHours(25)) shouldBe true
+        // access token은 Expo가 받아들이는 최대 수명인 15분이다
+        access.isAfter(nowUtc.plusMinutes(14)) shouldBe true
+        access.isBefore(nowUtc.plusMinutes(16)) shouldBe true
         refresh.isAfter(nowUtc.plusDays(6)) shouldBe true
         refresh.isBefore(nowUtc.plusDays(8)) shouldBe true
+    }
+
+    @Test
+    fun `응답의 만료 시각은 실제 JWT의 exp와 일치하고 수명은 15분을 넘지 않는다`() {
+        val body = objectMapper.readTree(signIn("accepted").andReturn().response.contentAsString)
+
+        val payload =
+            Jwts
+                .parser()
+                .verifyWith(testKeyPair.public)
+                .build()
+                .parseSignedClaims(body["accessToken"].asString())
+                .payload
+        val expiresIn = LocalDateTime.parse(body["accessTokenExpiresIn"].asString()).toInstant(ZoneOffset.UTC)
+        // 응답은 초 단위로 잘리므로 1초의 오차를 허용한다
+        (kotlin.math.abs(payload.expiration.toInstant().epochSecond - expiresIn.epochSecond) <= 1) shouldBe true
+        (payload.expiration.time - payload.issuedAt.time <= 15 * 60 * 1000L + 1000) shouldBe true
     }
 
     @Test

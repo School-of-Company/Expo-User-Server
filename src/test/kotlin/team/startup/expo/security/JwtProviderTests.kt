@@ -37,7 +37,7 @@ class JwtProviderTests {
 
     @Test
     fun `만료 시각은 설정한 TTL을 따른다`() {
-        val provider = JwtProvider(JwtProperties(privateKey = pem(keyPair), accessTokenTtl = Duration.ofMinutes(30)))
+        val provider = JwtProvider(JwtProperties(privateKey = pem(keyPair), accessTokenTtl = Duration.ofMinutes(10)))
         val before = LocalDateTime.now(ZoneOffset.UTC)
 
         val issued = provider.generateAccessToken(1L, Authority.ROLE_ADMIN)
@@ -50,9 +50,40 @@ class JwtProviderTests {
                 .parseSignedClaims(issued.value)
         val ttlMillis = jws.payload.expiration.time - jws.payload.issuedAt.time
         // JWT의 exp/iat는 초 단위로 잘리므로 1초의 오차를 허용한다
-        (ttlMillis in (Duration.ofMinutes(30).toMillis() - 1000)..(Duration.ofMinutes(30).toMillis() + 1000)) shouldBe true
-        issued.expiresAt.isAfter(before.plusMinutes(29)) shouldBe true
-        issued.expiresAt.isBefore(before.plusMinutes(31)) shouldBe true
+        (ttlMillis in (Duration.ofMinutes(10).toMillis() - 1000)..(Duration.ofMinutes(10).toMillis() + 1000)) shouldBe true
+        issued.expiresAt.isAfter(before.plusMinutes(9)) shouldBe true
+        issued.expiresAt.isBefore(before.plusMinutes(11)) shouldBe true
+    }
+
+    @Test
+    fun `기본 access token 수명은 Expo가 받아들이는 최대치인 15분이다`() {
+        val properties = JwtProperties(privateKey = pem(keyPair))
+        val issued = JwtProvider(properties).generateAccessToken(1L, Authority.ROLE_ADMIN)
+        val jws =
+            Jwts
+                .parser()
+                .verifyWith(keyPair.public)
+                .build()
+                .parseSignedClaims(issued.value)
+
+        properties.accessTokenTtl shouldBe Duration.ofMinutes(15)
+        // exp/iat는 초 단위로 잘리므로 1초의 오차를 허용한다
+        val lifetimeMillis = jws.payload.expiration.time - jws.payload.issuedAt.time
+        (lifetimeMillis <= Duration.ofMinutes(15).toMillis() + 1000) shouldBe true
+    }
+
+    @Test
+    fun `15분을 넘거나 0 이하인 access token 수명은 기동 시 거부한다`() {
+        listOf(Duration.ofMinutes(16), Duration.ofHours(24), Duration.ZERO, Duration.ofMinutes(-5)).forEach {
+            assertThrows(IllegalArgumentException::class.java) { JwtProperties(privateKey = pem(keyPair), accessTokenTtl = it) }
+        }
+        // 정확히 15분은 허용한다
+        JwtProperties(privateKey = pem(keyPair), accessTokenTtl = Duration.ofMinutes(15)).accessTokenTtl shouldBe Duration.ofMinutes(15)
+    }
+
+    @Test
+    fun `refresh token 수명은 0 이하이면 거부한다`() {
+        assertThrows(IllegalArgumentException::class.java) { JwtProperties(privateKey = pem(keyPair), refreshTokenTtl = Duration.ZERO) }
     }
 
     @Test
