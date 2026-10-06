@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
@@ -14,7 +15,8 @@ import team.startup.expo.domain.user.repository.AdminRepository
 import team.startup.expo.support.IntegrationTestSupport
 
 /**
- * 핸들러가 아직 없는 경로는 보안을 통과하면 404가 된다. 401/403이 아닌 것으로 "통과"를 확인한다.
+ * 보안 규칙만 확인한다. 핸들러 유무나 요청 본문에 따라 응답 코드가 달라지므로, 열려 있는 경로는
+ * 401/403이 아닌 것으로 "보안을 통과했음"을 확인한다.
  */
 class GatewayHeaderSecurityTests : IntegrationTestSupport() {
     @Autowired
@@ -35,9 +37,9 @@ class GatewayHeaderSecurityTests : IntegrationTestSupport() {
 
     @Test
     fun `가입, 로그인, 재발급 경로는 인증 없이 열려 있다`() {
-        mockMvc.perform(post("/auth")).andExpect(status().isNotFound)
-        mockMvc.perform(post("/auth/signin")).andExpect(status().isNotFound)
-        mockMvc.perform(patch("/auth")).andExpect(status().isNotFound)
+        assertPassesSecurity(post("/auth"))
+        assertPassesSecurity(post("/auth/signin"))
+        assertPassesSecurity(patch("/auth"))
     }
 
     @Test
@@ -47,7 +49,7 @@ class GatewayHeaderSecurityTests : IntegrationTestSupport() {
 
     @Test
     fun `승인된 관리자의 X-User-Id로 로그아웃 경로를 통과한다`() {
-        mockMvc.perform(delete("/auth").header("X-User-Id", acceptedAdminId)).andExpect(status().isNotFound)
+        assertPassesSecurity(delete("/auth").header("X-User-Id", acceptedAdminId))
     }
 
     @Test
@@ -82,6 +84,15 @@ class GatewayHeaderSecurityTests : IntegrationTestSupport() {
                 .andReturn()
                 .response.status
         check(result != 401 && result != 403) { "health must be permitted, was $result" }
+    }
+
+    private fun assertPassesSecurity(request: MockHttpServletRequestBuilder) {
+        val result =
+            mockMvc
+                .perform(request)
+                .andReturn()
+                .response.status
+        check(result != 401 && result != 403) { "request must pass security, was $result" }
     }
 
     private fun admin(
