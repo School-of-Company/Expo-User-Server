@@ -4,6 +4,8 @@ import io.swagger.v3.oas.annotations.Operation
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -16,12 +18,14 @@ import team.startup.expo.domain.participation.presentation.dto.request.RecordEnt
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveStandardParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.response.CreateStandardParticipantResDto
+import team.startup.expo.domain.participation.presentation.dto.response.GetSurveyAnswerEventResDto
 import team.startup.expo.domain.participation.presentation.dto.response.RecordEntryResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveStandardParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantNameResDto
 import team.startup.expo.domain.participation.service.CreateStandardParticipantService
 import team.startup.expo.domain.participation.service.GetStandardParticipantNamesService
+import team.startup.expo.domain.participation.service.GetSurveyAnswerEventService
 import team.startup.expo.domain.participation.service.IncreaseSmsTryTimeService
 import team.startup.expo.domain.participation.service.RecordEntryService
 import team.startup.expo.domain.participation.service.ResolveParticipantService
@@ -37,6 +41,7 @@ class InternalParticipantController(
     private val resolveStandardParticipantService: ResolveStandardParticipantService,
     private val resolveParticipantService: ResolveParticipantService,
     private val getStandardParticipantNamesService: GetStandardParticipantNamesService,
+    private val getSurveyAnswerEventService: GetSurveyAnswerEventService,
     private val createStandardParticipantService: CreateStandardParticipantService,
     private val increaseSmsTryTimeService: IncreaseSmsTryTimeService,
     private val recordEntryService: RecordEntryService,
@@ -58,6 +63,12 @@ class InternalParticipantController(
     fun resolveParticipant(
         @Valid @RequestBody reqDto: ResolveParticipantReqDto,
     ): ResolveParticipantResDto = resolveParticipantService.execute(reqDto)
+
+    @Operation(summary = "설문 답변 이벤트 처리 결과 조회", description = "eventId로 처리를 마친 이벤트의 결과(STORED, REJECTED와 사유)를 돌려줍니다. 처리한 적 없으면 404입니다.")
+    @GetMapping("/survey-answer-events/{eventId}")
+    fun getSurveyAnswerEvent(
+        @PathVariable eventId: String,
+    ): GetSurveyAnswerEventResDto = getSurveyAnswerEventService.execute(eventId)
 
     @Operation(
         summary = "일반 참가자 등록",
