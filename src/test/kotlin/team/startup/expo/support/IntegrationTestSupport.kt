@@ -12,6 +12,8 @@ import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.postgresql.PostgreSQLContainer
+import team.startup.expo.domain.user.entity.Authority
+import team.startup.expo.global.security.jwt.JwtProvider
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.util.Base64
@@ -26,6 +28,12 @@ import java.util.Base64
 abstract class IntegrationTestSupport {
     @Autowired
     protected lateinit var jdbcTemplate: JdbcTemplate
+
+    @Autowired
+    protected lateinit var jwtProvider: JwtProvider
+
+    /** 서비스가 서명한 access token의 `Authorization` 헤더 값. 존재하지 않는 id여도 토큰은 만들어진다. */
+    protected fun bearerOf(adminId: Long): String = "Bearer ${jwtProvider.generateAccessToken(adminId, Authority.ROLE_ADMIN).value}"
 
     protected fun clearAdmins() {
         jdbcTemplate.execute("TRUNCATE TABLE tb_admin RESTART IDENTITY CASCADE")

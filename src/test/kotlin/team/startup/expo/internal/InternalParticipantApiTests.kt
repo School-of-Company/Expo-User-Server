@@ -84,10 +84,44 @@ class InternalParticipantApiTests : IntegrationTestSupport() {
 
     @Test
     fun `일반 참가자 조회의 입력이 올바르지 않으면 400이다`() {
-        resolveStandard(EXPO_A, "010-1111-2222").andExpect(status().isBadRequest)
+        resolveStandard(EXPO_A, "010abc2222").andExpect(status().isBadRequest)
+        resolveStandard(EXPO_A, "---").andExpect(status().isBadRequest)
+        resolveStandard(EXPO_A, "0".repeat(16)).andExpect(status().isBadRequest)
         resolveStandard(EXPO_A, "").andExpect(status().isBadRequest)
         resolveStandard(" ", PHONE_1).andExpect(status().isBadRequest)
         postInternal("/internal/standard-participants/resolve", "{}").andExpect(status().isBadRequest)
+    }
+
+    // --- 전화번호 표기: v1은 형식 검증 없이 저장했으므로 하이픈이 든 번호가 있을 수 있다
+
+    @Test
+    fun `하이픈이 든 저장 번호도 표기와 상관없이 같은 숫자면 찾는다`() {
+        val hyphenated = saveStandard(EXPO_C, "010-7777-8888", "하이픈")
+        val plain = saveStandard(EXPO_C, "01099990001", "숫자만")
+
+        resolveStandard(EXPO_C, "010-7777-8888").andExpect(status().isOk).andExpect(jsonPath("$.participantId").value(hyphenated))
+        resolveStandard(EXPO_C, "01077778888").andExpect(status().isOk).andExpect(jsonPath("$.participantId").value(hyphenated))
+        resolveStandard(EXPO_C, "010 7777 8888").andExpect(status().isOk).andExpect(jsonPath("$.participantId").value(hyphenated))
+        resolveStandard(EXPO_C, "010-9999-0001").andExpect(status().isOk).andExpect(jsonPath("$.participantId").value(plain))
+    }
+
+    @Test
+    fun `표기까지 같은 번호가 있으면 그것을 우선하고 표기만 다른 후보가 여럿이면 409이다`() {
+        val hyphenated = saveStandard(EXPO_C, "010-1212-3434", "하이픈")
+        val plain = saveStandard(EXPO_C, "01012123434", "숫자만")
+
+        resolveStandard(EXPO_C, "01012123434").andExpect(status().isOk).andExpect(jsonPath("$.participantId").value(plain))
+        resolveStandard(EXPO_C, "010-1212-3434").andExpect(status().isOk).andExpect(jsonPath("$.participantId").value(hyphenated))
+        resolveStandard(EXPO_C, "010 1212 3434").andExpect(status().isConflict)
+    }
+
+    @Test
+    fun `연수자도 하이픈 표기 차이를 넘어 찾고 다른 박람회의 번호는 찾지 않는다`() {
+        val trainee = saveTrainee(EXPO_C, "010-5555-6666", "T-9")
+
+        resolveParticipant(EXPO_C, "01055556666", "TRAINEE").andExpect(status().isOk).andExpect(jsonPath("$.participantId").value(trainee))
+        resolveParticipant(EXPO_C, "01055556666", "STANDARD").andExpect(status().isNotFound)
+        resolveParticipant(EXPO_A, "01055556666", "TRAINEE").andExpect(status().isNotFound)
     }
 
     // --- POST /internal/participants/resolve
@@ -197,8 +231,9 @@ class InternalParticipantApiTests : IntegrationTestSupport() {
     fun `gateway 헤더만으로는 내부 경로에 접근할 수 없다`() {
         INTERNAL_PATHS.forEach { (path, body) ->
             mockMvc
-                .perform(post(path).header("X-User-Id", acceptedAdminId).contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isUnauthorized)
+                .perform(
+                    post(path).header("Authorization", bearerOf(acceptedAdminId)).contentType(MediaType.APPLICATION_JSON).content(body),
+                ).andExpect(status().isUnauthorized)
         }
     }
 
@@ -208,7 +243,7 @@ class InternalParticipantApiTests : IntegrationTestSupport() {
             .perform(
                 post("/internal/standard-participants/resolve")
                     .header("X-Internal-Token", INTERNAL_TOKEN)
-                    .header("X-User-Id", 99999)
+                    .header("Authorization", bearerOf(99999))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{"expoId":"$EXPO_A","phoneNumber":"$PHONE_1"}"""),
             ).andExpect(status().isOk)
@@ -223,7 +258,7 @@ class InternalParticipantApiTests : IntegrationTestSupport() {
     fun `관리자는 내부 경로를 쓸 수 없다`() {
         mockMvc
             .perform(
-                get("/internal/standard-participants/resolve").header("X-User-Id", acceptedAdminId),
+                get("/internal/standard-participants/resolve").header("Authorization", bearerOf(acceptedAdminId)),
             ).andExpect(status().isUnauthorized)
     }
 
@@ -293,6 +328,7 @@ class InternalParticipantApiTests : IntegrationTestSupport() {
     private companion object {
         const val EXPO_A = "0199aaaa-0000-7000-8000-00000000000a"
         const val EXPO_B = "0199aaaa-0000-7000-8000-00000000000b"
+        const val EXPO_C = "0199aaaa-0000-7000-8000-00000000000c"
         const val PHONE_1 = "01011112222"
         const val PHONE_2 = "01033334444"
         const val PHONE_3 = "01055556666"
