@@ -6,19 +6,16 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import team.startup.expo.domain.auth.presentation.dto.request.SignInReqDto
 import team.startup.expo.domain.auth.presentation.dto.response.TokenResDto
-import team.startup.expo.domain.auth.service.RefreshTokenService
 import team.startup.expo.domain.auth.service.SignInService
 import team.startup.expo.domain.user.entity.Status
 import team.startup.expo.domain.user.repository.AdminRepository
 import team.startup.expo.global.exception.ExpectedException
-import team.startup.expo.global.security.jwt.JwtProvider
 
 @Service
 class SignInServiceImpl(
     private val adminRepository: AdminRepository,
     private val passwordEncoder: PasswordEncoder,
-    private val jwtProvider: JwtProvider,
-    private val refreshTokenService: RefreshTokenService,
+    private val tokenIssuer: TokenIssuer,
 ) : SignInService {
     @Transactional(readOnly = true)
     override fun execute(reqDto: SignInReqDto): TokenResDto {
@@ -33,14 +30,6 @@ class SignInServiceImpl(
             throw ExpectedException(HttpStatus.FORBIDDEN, "아직 관리자가 보류 중입니다.")
         }
 
-        val adminId = requireNotNull(admin.id)
-        val accessToken = jwtProvider.generateAccessToken(adminId, admin.authority)
-        val refreshToken = refreshTokenService.issue(adminId)
-        return TokenResDto(
-            accessToken = accessToken.value,
-            refreshToken = refreshToken.value,
-            accessTokenExpiresIn = accessToken.expiresAt,
-            refreshTokenExpiresIn = refreshToken.expiresAt,
-        )
+        return tokenIssuer.issue(admin)
     }
 }
