@@ -108,6 +108,18 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `표기만 다른 같은 번호의 동시 요청도 한 행만 만든다`() {
+        val statuses =
+            concurrentlyIndexed { index ->
+                createStandard(phone = if (index % 2 == 0) "010-1234-5678" else "01012345678").andReturn().response.status
+            }
+
+        statuses.count { it == 201 } shouldBe 1
+        statuses.count { it == 200 } shouldBe THREADS - 1
+        count("tb_standard_participant") shouldBe 1
+    }
+
+    @Test
     fun `삭제 중이거나 삭제된 박람회에는 만들 수 없고 409이다`() {
         jdbcTemplate.update("INSERT INTO tb_expo_deletion (expo_id, started_at) VALUES (?, now())", EXPO)
 
@@ -204,6 +216,40 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `사전 등록은 같은 연수 번호를 다른 번호로 동시에 신청해도 하나만 만든다`() {
+        val statuses =
+            concurrentlyIndexed { index ->
+                createTrainee(training = "T-1", phone = "0102222000$index").andReturn().response.status
+            }
+
+        statuses.count { it == 201 } shouldBe 1
+        statuses.count { it == 409 } shouldBe THREADS - 1
+        count("tb_trainee") shouldBe 1
+    }
+
+    @Test
+    fun `표기만 다른 같은 번호를 연수자로 동시에 등록해도 하나만 만든다`() {
+        val statuses =
+            concurrentlyIndexed { index ->
+                createTrainee(
+                    training = "T-$index",
+                    phone =
+                        if (index % 2 ==
+                            0
+                        ) {
+                            "010-1234-5678"
+                        } else {
+                            "01012345678"
+                        },
+                ).andReturn().response.status
+            }
+
+        statuses.count { it == 201 } shouldBe 1
+        statuses.count { it == 409 } shouldBe THREADS - 1
+        count("tb_trainee") shouldBe 1
+    }
+
+    @Test
     fun `삭제 중이거나 삭제된 박람회에는 연수자를 만들 수 없고 409이다`() {
         jdbcTemplate.update("INSERT INTO tb_expo_deletion (expo_id, started_at) VALUES (?, now())", EXPO)
 
@@ -275,13 +321,15 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
         count("tb_trainee") shouldBe 0
     }
 
-    private fun <T> concurrently(request: () -> T): List<T> {
+    private fun <T> concurrently(request: () -> T): List<T> = concurrentlyIndexed { request() }
+
+    private fun <T> concurrentlyIndexed(request: (Int) -> T): List<T> {
         val start = CountDownLatch(1)
         val futures =
-            List(THREADS) {
+            List(THREADS) { index ->
                 executor.submit<T> {
                     start.await()
-                    request()
+                    request(index)
                 }
             }
         start.countDown()
