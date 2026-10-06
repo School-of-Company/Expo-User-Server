@@ -3,7 +3,9 @@ package team.startup.expo.domain.training.service.impl
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import team.startup.expo.domain.participation.repository.StandardParticipantRepository
+import team.startup.expo.domain.participation.service.ParticipantRegistrationLock
 import team.startup.expo.domain.training.entity.ApplicationType
 import team.startup.expo.domain.training.entity.Trainee
 import team.startup.expo.domain.training.presentation.dto.request.CreateTraineeReqDto
@@ -22,17 +24,23 @@ import java.time.LocalDateTime
  * - 현장 등록: 그 전화번호가 일반 참가자나 연수자 어느 쪽에든 있으면 거부한다.
  *
  * v1은 현장 등록한 연수자도 `PRE`로 저장했다(버그). 여기서는 요청한 등록 구분(`FIELD`)을 그대로 저장한다.
- * 같은 번호의 동시 요청은 `(expo_id, phone_number)` 유일 제약이 막고 409로 바꾼다. 서비스 전체를 하나의
- * 트랜잭션으로 묶지 않아야 제약 위반 뒤에도 예외를 변환할 수 있다.
+ * 확인과 저장 사이에 다른 요청이 끼어들지 못하게 [ParticipantRegistrationLock]으로 같은 번호(숫자 기준)와, 사전
+ * 등록이면 같은 연수 번호의 요청을 직렬화한다. 연수 번호는 현장 등록에서 같은 값을 허용해 유일 제약을 걸 수 없고,
+ * 번호의 `(expo_id, phone_number)` 유일 제약은 마지막 안전망이라 걸리면 409로 바꾼다.
  */
 @Service
 class CreateTraineeServiceImpl(
     private val traineeRepository: TraineeRepository,
     private val standardParticipantRepository: StandardParticipantRepository,
+    private val registrationLock: ParticipantRegistrationLock,
 ) : CreateTraineeService {
+    @Transactional
     override fun execute(reqDto: CreateTraineeReqDto): CreateTraineeResDto {
         InformationJson.requireValid(reqDto.informationJson)
         val digits = PhoneNumbers.digitsOnly(reqDto.phoneNumber)
+        // 전화번호, 연수 번호 순서로 잡는다. 일반 참가자 등록도 같은 전화번호 lock을 잡아 두 테이블의 같은 번호가 함께 직렬화된다
+        registrationLock.lockPhone(reqDto.expoId, digits)
+        if (reqDto.applicationType == ApplicationType.PRE) registrationLock.lockTrainingId(reqDto.expoId, reqDto.trainingId)
 
         val alreadyApplied =
             when (reqDto.applicationType) {
