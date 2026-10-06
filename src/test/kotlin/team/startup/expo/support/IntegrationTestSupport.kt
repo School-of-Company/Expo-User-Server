@@ -26,6 +26,9 @@ import java.util.Base64
     properties = [
         "eureka.client.enabled=false",
         "spring.jpa.properties.hibernate.generate_statistics=true",
+        // 다른 통합 테스트는 브로커 없이 돈다. @DynamicPropertySource보다 우선순위가 낮은 여기에 두어야
+        // Kafka 테스트가 자기 @DynamicPropertySource로 true를 줄 때 덮어쓰지 않는다.
+        "survey-answer.consumer.auto-startup=false",
     ],
 )
 @AutoConfigureMockMvc
