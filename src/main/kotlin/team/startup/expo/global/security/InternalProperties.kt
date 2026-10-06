@@ -10,6 +10,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class InternalProperties(
     val token: String,
 ) {
+    // data class의 기본 toString은 토큰을 그대로 출력한다
+    override fun toString() = "InternalProperties(token=***)"
+
     init {
         require(token.length >= MIN_TOKEN_LENGTH) { "internal.token must be at least $MIN_TOKEN_LENGTH characters" }
     }

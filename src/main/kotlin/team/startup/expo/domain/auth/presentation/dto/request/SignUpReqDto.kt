@@ -25,4 +25,7 @@ data class SignUpReqDto(
     @field:NotBlank
     @field:Pattern(regexp = "^01\\d{8,9}$", message = "전화번호는 하이픈 없이 숫자만 입력해야 합니다. (예: 01012341234)")
     val phoneNumber: String,
-)
+) {
+    // 비밀번호가 로그나 예외 메시지에 남지 않도록 가린다
+    override fun toString() = "SignUpReqDto(name=$name, nickname=$nickname, email=$email, password=***, phoneNumber=$phoneNumber)"
+}
