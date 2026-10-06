@@ -2,6 +2,8 @@ package team.startup.expo.domain.participation.presentation
 
 import io.swagger.v3.oas.annotations.Operation
 import jakarta.validation.Valid
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -9,10 +11,12 @@ import org.springframework.web.bind.annotation.RestController
 import team.startup.expo.domain.participation.presentation.dto.request.GetStandardParticipantNamesReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveStandardParticipantReqDto
+import team.startup.expo.domain.participation.presentation.dto.response.GetSurveyAnswerEventResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveStandardParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantNameResDto
 import team.startup.expo.domain.participation.service.GetStandardParticipantNamesService
+import team.startup.expo.domain.participation.service.GetSurveyAnswerEventService
 import team.startup.expo.domain.participation.service.ResolveParticipantService
 import team.startup.expo.domain.participation.service.ResolveStandardParticipantService
 
@@ -26,6 +30,7 @@ class InternalParticipantController(
     private val resolveStandardParticipantService: ResolveStandardParticipantService,
     private val resolveParticipantService: ResolveParticipantService,
     private val getStandardParticipantNamesService: GetStandardParticipantNamesService,
+    private val getSurveyAnswerEventService: GetSurveyAnswerEventService,
 ) {
     @Operation(summary = "일반 참가자 id 조회", description = "박람회 id와 전화번호로 일반 참가자 id를 찾습니다. 없으면 404입니다.")
     @PostMapping("/standard-participants/resolve")
@@ -44,4 +49,10 @@ class InternalParticipantController(
     fun resolveParticipant(
         @Valid @RequestBody reqDto: ResolveParticipantReqDto,
     ): ResolveParticipantResDto = resolveParticipantService.execute(reqDto)
+
+    @Operation(summary = "설문 답변 이벤트 처리 결과 조회", description = "eventId로 처리를 마친 이벤트의 결과(STORED, REJECTED와 사유)를 돌려줍니다. 처리한 적 없으면 404입니다.")
+    @GetMapping("/survey-answer-events/{eventId}")
+    fun getSurveyAnswerEvent(
+        @PathVariable eventId: String,
+    ): GetSurveyAnswerEventResDto = getSurveyAnswerEventService.execute(eventId)
 }
