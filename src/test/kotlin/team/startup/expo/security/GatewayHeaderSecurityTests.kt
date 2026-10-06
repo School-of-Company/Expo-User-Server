@@ -73,7 +73,7 @@ class GatewayHeaderSecurityTests : IntegrationTestSupport() {
     @Test
     fun `명시하지 않은 경로는 막혀 있다`() {
         mockMvc.perform(get("/auth")).andExpect(status().isUnauthorized)
-        mockMvc.perform(get("/admin/my").header("X-User-Id", acceptedAdminId)).andExpect(status().isForbidden)
+        mockMvc.perform(get("/not-defined").header("X-User-Id", acceptedAdminId)).andExpect(status().isForbidden)
     }
 
     @Test
