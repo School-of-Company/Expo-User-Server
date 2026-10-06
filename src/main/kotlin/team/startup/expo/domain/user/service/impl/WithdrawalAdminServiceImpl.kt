@@ -13,7 +13,7 @@ class WithdrawalAdminServiceImpl(
 ) : WithdrawalAdminService {
     @Transactional
     override fun execute(adminId: Long) {
-        adminRepository.deleteById(adminId)
+        adminRepository.findByIdForUpdate(adminId)?.let(adminRepository::delete)
         refreshTokenService.revoke(adminId)
     }
 }

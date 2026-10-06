@@ -14,7 +14,7 @@ class AcceptAdminServiceImpl(
     @Transactional
     override fun execute(adminId: Long) {
         val admin =
-            adminRepository.findById(adminId).orElse(null)
+            adminRepository.findByIdForUpdate(adminId)
                 ?: throw ExpectedException(HttpStatus.NOT_FOUND, "해당 유저를 찾을 수 없습니다.")
         admin.accept()
     }
