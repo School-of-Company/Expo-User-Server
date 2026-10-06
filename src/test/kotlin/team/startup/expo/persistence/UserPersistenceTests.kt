@@ -257,6 +257,7 @@ class UserPersistenceTests {
         fun jwtProperties(registry: DynamicPropertyRegistry) {
             registry.add("jwt.private-key") { IntegrationTestSupport.generatePrivateKeyPem() }
             registry.add("internal.token") { IntegrationTestSupport.INTERNAL_TOKEN }
+            registry.add("survey-answer.consumer.auto-startup") { "false" }
         }
 
         private fun admin(

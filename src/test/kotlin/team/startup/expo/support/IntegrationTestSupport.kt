@@ -60,6 +60,7 @@ abstract class IntegrationTestSupport {
         fun jwtProperties(registry: DynamicPropertyRegistry) {
             registry.add("jwt.private-key") { generatePrivateKeyPem() }
             registry.add("internal.token") { INTERNAL_TOKEN }
+            registry.add("survey-answer.consumer.auto-startup") { "false" }
         }
 
         /** 서비스가 서명한 토큰을 테스트에서 검증할 수 있도록 키쌍을 한 번만 만들어 공유한다. */
