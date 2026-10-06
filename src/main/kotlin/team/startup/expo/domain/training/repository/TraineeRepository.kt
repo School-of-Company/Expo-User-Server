@@ -23,6 +23,14 @@ interface TraineeRepository : JpaRepository<Trainee, Long> {
         ids: Collection<Long>,
     ): List<TraineeNameView>
 
+    fun findByExpoIdOrderById(expoId: String): List<TraineeInfoView>
+
+    /** `Containing`은 이름에 든 `%`와 `_`를 와일드카드가 아닌 글자로 취급한다. */
+    fun findByExpoIdAndNameContainingOrderById(
+        expoId: String,
+        name: String,
+    ): List<TraineeInfoView>
+
     /** 숫자만 남겨 비교한다. `idx_trainee_expo_phone_digits` 표현식 인덱스와 같은 식이어야 인덱스를 탄다. */
     @Query(
         value =
