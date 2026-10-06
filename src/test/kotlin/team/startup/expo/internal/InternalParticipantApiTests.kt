@@ -84,8 +84,9 @@ class InternalParticipantApiTests : IntegrationTestSupport() {
 
     @Test
     fun `일반 참가자 조회의 입력이 올바르지 않으면 400이다`() {
-        resolveStandard(EXPO_A, "010abc2222").andExpect(status().isBadRequest)
         resolveStandard(EXPO_A, "---").andExpect(status().isBadRequest)
+        resolveStandard(EXPO_A, "abc").andExpect(status().isBadRequest)
+        resolveStandard(EXPO_A, "0".repeat(31)).andExpect(status().isBadRequest)
         resolveStandard(EXPO_A, "0".repeat(16)).andExpect(status().isBadRequest)
         resolveStandard(EXPO_A, "").andExpect(status().isBadRequest)
         resolveStandard(" ", PHONE_1).andExpect(status().isBadRequest)
@@ -122,6 +123,38 @@ class InternalParticipantApiTests : IntegrationTestSupport() {
         resolveParticipant(EXPO_C, "01055556666", "TRAINEE").andExpect(status().isOk).andExpect(jsonPath("$.participantId").value(trainee))
         resolveParticipant(EXPO_C, "01055556666", "STANDARD").andExpect(status().isNotFound)
         resolveParticipant(EXPO_A, "01055556666", "TRAINEE").andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `+82나 괄호처럼 다양한 표기도 서버가 숫자만 남겨 비교한다`() {
+        val parenthesized = saveStandard(EXPO_C, "(010)3333-4444", "괄호")
+
+        resolveStandard(EXPO_C, "(010)3333-4444").andExpect(status().isOk).andExpect(jsonPath("$.participantId").value(parenthesized))
+        resolveStandard(EXPO_C, "01033334444").andExpect(status().isOk).andExpect(jsonPath("$.participantId").value(parenthesized))
+        resolveStandard(EXPO_C, "010.3333.4444").andExpect(status().isOk).andExpect(jsonPath("$.participantId").value(parenthesized))
+    }
+
+    @Test
+    fun `숫자 비교 조회는 표현식 인덱스를 쓸 수 있다`() {
+        val plans =
+            jdbcTemplate.execute { connection: java.sql.Connection ->
+                connection.createStatement().use { statement ->
+                    statement.execute("SET enable_seqscan = off")
+                    listOf(
+                        "tb_standard_participant" to "idx_standard_participant_expo_phone_digits",
+                        "tb_trainee" to "idx_trainee_expo_phone_digits",
+                    ).map { (table, index) ->
+                        val plan = StringBuilder()
+                        statement
+                            .executeQuery(
+                                "EXPLAIN SELECT * FROM $table WHERE expo_id = 'x' AND regexp_replace(phone_number, '[^0-9]', '', 'g') = '01011112222'",
+                            ).use { rs -> while (rs.next()) plan.appendLine(rs.getString(1)) }
+                        index to plan.toString()
+                    }
+                }
+            }!!
+
+        plans.forEach { (index, plan) -> check(plan.contains(index)) { "$index 인덱스를 쓰지 않는 실행 계획: $plan" } }
     }
 
     // --- POST /internal/participants/resolve
@@ -177,6 +210,15 @@ class InternalParticipantApiTests : IntegrationTestSupport() {
         names(EXPO_A, listOf(standard1, 99999L)).andExpect(status().isNotFound).andExpect(jsonPath("$[0]").doesNotExist())
         names(EXPO_A, listOf(standard1, standardOtherExpo)).andExpect(status().isNotFound)
         names(EXPO_A, listOf(standardOtherExpo)).andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `실패하면 호출자가 보낸 id 중 찾지 못한 것을 알려 준다`() {
+        names(EXPO_A, listOf(standard1, 99999L, standardOtherExpo))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("99999")))
+            .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString(standardOtherExpo.toString())))
+            .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("홍길동"))))
     }
 
     @Test
@@ -247,6 +289,44 @@ class InternalParticipantApiTests : IntegrationTestSupport() {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{"expoId":"$EXPO_A","phoneNumber":"$PHONE_1"}"""),
             ).andExpect(status().isOk)
+    }
+
+    @Test
+    fun `context path가 있어도 내부 경로 판정이 같다`() {
+        val body = """{"expoId":"$EXPO_A","phoneNumber":"$PHONE_1"}"""
+
+        mockMvc
+            .perform(
+                post("/ctx/internal/standard-participants/resolve")
+                    .contextPath("/ctx")
+                    .header("X-Internal-Token", INTERNAL_TOKEN)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body),
+            ).andExpect(status().isOk)
+        mockMvc
+            .perform(
+                post("/ctx/internal/standard-participants/resolve")
+                    .contextPath("/ctx")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(body),
+            ).andExpect(status().isUnauthorized)
+        // 내부 토큰이 있어도 context path 아래의 일반 경로에서는 인증되지 않는다
+        mockMvc
+            .perform(
+                get("/ctx/admin/my").contextPath("/ctx").header("X-Internal-Token", INTERNAL_TOKEN),
+            ).andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `내부 경로 접두사 자체나 변형된 경로로는 토큰 없이 접근할 수 없다`() {
+        listOf("/internal", "/internal/", "/internal/unknown", "/internal/standard-participants").forEach { path ->
+            val status =
+                mockMvc
+                    .perform(post(path).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    .andReturn()
+                    .response.status
+            check(status == 401) { "$path 는 토큰 없이 401이어야 하는데 $status" }
+        }
     }
 
     @Test
