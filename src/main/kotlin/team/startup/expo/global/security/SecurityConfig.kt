@@ -60,6 +60,10 @@ class SecurityConfig {
                     .hasAuthority(Authority.ROLE_ADMIN.name)
                     .requestMatchers(HttpMethod.GET, "/admin", "/admin/my")
                     .hasAuthority(Authority.ROLE_ADMIN.name)
+                    .requestMatchers(HttpMethod.PATCH, "/admin/{admin_id}")
+                    .hasAuthority(Authority.ROLE_ADMIN.name)
+                    .requestMatchers(HttpMethod.DELETE, "/admin", "/admin/{admin_id}")
+                    .hasAuthority(Authority.ROLE_ADMIN.name)
                     .anyRequest()
                     .denyAll()
             }
