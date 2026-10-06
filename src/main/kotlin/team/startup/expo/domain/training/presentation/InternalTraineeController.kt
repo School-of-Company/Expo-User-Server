@@ -2,14 +2,19 @@ package team.startup.expo.domain.training.presentation
 
 import io.swagger.v3.oas.annotations.Operation
 import jakarta.validation.Valid
+import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import team.startup.expo.domain.training.presentation.dto.request.CreateTraineeReqDto
 import team.startup.expo.domain.training.presentation.dto.request.GetTraineeNamesReqDto
 import team.startup.expo.domain.training.presentation.dto.request.ResolveTraineeReqDto
+import team.startup.expo.domain.training.presentation.dto.response.CreateTraineeResDto
 import team.startup.expo.domain.training.presentation.dto.response.ResolveTraineeResDto
 import team.startup.expo.domain.training.presentation.dto.response.TraineeNameResDto
+import team.startup.expo.domain.training.service.CreateTraineeService
 import team.startup.expo.domain.training.service.GetTraineeNamesService
 import team.startup.expo.domain.training.service.ResolveTraineeService
 
@@ -22,6 +27,7 @@ import team.startup.expo.domain.training.service.ResolveTraineeService
 class InternalTraineeController(
     private val resolveTraineeService: ResolveTraineeService,
     private val getTraineeNamesService: GetTraineeNamesService,
+    private val createTraineeService: CreateTraineeService,
 ) {
     @Operation(summary = "연수자 id 조회", description = "박람회 id와 연수 번호로 연수자 id를 찾습니다. 없으면 404, 같은 번호의 연수자가 여럿이면 409입니다.")
     @PostMapping("/resolve")
@@ -34,4 +40,14 @@ class InternalTraineeController(
     fun getTraineeNames(
         @Valid @RequestBody reqDto: GetTraineeNamesReqDto,
     ): List<TraineeNameResDto> = getTraineeNamesService.execute(reqDto)
+
+    @Operation(
+        summary = "연수자 등록",
+        description = "사전 등록은 연수 번호나 전화번호가 같은 연수자가, 현장 등록은 전화번호가 같은 연수자나 일반 참가자가 이미 있으면 409입니다.",
+    )
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    fun createTrainee(
+        @Valid @RequestBody reqDto: CreateTraineeReqDto,
+    ): CreateTraineeResDto = createTraineeService.execute(reqDto)
 }
