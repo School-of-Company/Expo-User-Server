@@ -12,6 +12,7 @@ import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.time.Duration
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 import java.util.Base64
 
 class JwtProviderTests {
@@ -37,7 +38,7 @@ class JwtProviderTests {
     @Test
     fun `만료 시각은 설정한 TTL을 따른다`() {
         val provider = JwtProvider(JwtProperties(privateKey = pem(keyPair), accessTokenTtl = Duration.ofMinutes(30)))
-        val before = LocalDateTime.now()
+        val before = LocalDateTime.now(ZoneOffset.UTC)
 
         val issued = provider.generateAccessToken(1L, Authority.ROLE_ADMIN)
 

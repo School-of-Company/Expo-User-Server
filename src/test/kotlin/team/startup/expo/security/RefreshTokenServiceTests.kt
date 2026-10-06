@@ -8,6 +8,7 @@ import team.startup.expo.domain.auth.service.RefreshTokenService
 import team.startup.expo.support.IntegrationTestSupport
 import java.time.Duration
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 class RefreshTokenServiceTests : IntegrationTestSupport() {
     @Autowired
@@ -21,8 +22,8 @@ class RefreshTokenServiceTests : IntegrationTestSupport() {
         val issued = refreshTokenService.issue(101L)
 
         refreshTokenService.findAdminId(issued.value) shouldBe 101L
-        issued.expiresAt.isAfter(LocalDateTime.now().plusDays(6)) shouldBe true
-        issued.expiresAt.isBefore(LocalDateTime.now().plusDays(8)) shouldBe true
+        issued.expiresAt.isAfter(LocalDateTime.now(ZoneOffset.UTC).plusDays(6)) shouldBe true
+        issued.expiresAt.isBefore(LocalDateTime.now(ZoneOffset.UTC).plusDays(8)) shouldBe true
     }
 
     @Test

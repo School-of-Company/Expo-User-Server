@@ -9,6 +9,7 @@ import team.startup.expo.global.security.jwt.JwtProperties
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 import java.util.Base64
 
 /**
@@ -25,7 +26,7 @@ class RefreshTokenServiceImpl(
     override fun issue(adminId: Long): IssuedToken {
         val rawToken = generateRawToken()
         refreshTokenRepository.save(RefreshToken(adminId, hash(rawToken), properties.refreshTokenTtl.seconds))
-        return IssuedToken(rawToken, LocalDateTime.now().plus(properties.refreshTokenTtl))
+        return IssuedToken(rawToken, LocalDateTime.now(ZoneOffset.UTC).plus(properties.refreshTokenTtl))
     }
 
     override fun findAdminId(rawToken: String): Long? = refreshTokenRepository.findByTokenHash(hash(rawToken))?.adminId

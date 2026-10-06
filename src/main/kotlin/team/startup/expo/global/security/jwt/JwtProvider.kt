@@ -8,7 +8,7 @@ import java.security.PrivateKey
 import java.security.spec.PKCS8EncodedKeySpec
 import java.time.Instant
 import java.time.LocalDateTime
-import java.time.ZoneId
+import java.time.ZoneOffset
 import java.util.Base64
 import java.util.Date
 
@@ -37,7 +37,7 @@ class JwtProvider(
                 .expiration(Date.from(expiresAt))
                 .signWith(privateKey, Jwts.SIG.RS256)
                 .compact()
-        return IssuedToken(token, LocalDateTime.ofInstant(expiresAt, ZoneId.systemDefault()))
+        return IssuedToken(token, LocalDateTime.ofInstant(expiresAt, ZoneOffset.UTC))
     }
 
     private fun parsePrivateKey(pem: String): PrivateKey =
