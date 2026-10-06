@@ -12,15 +12,18 @@ import org.springframework.web.bind.annotation.RestController
 import team.startup.expo.domain.participation.presentation.dto.request.CreateStandardParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.GetStandardParticipantNamesReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.IncreaseSmsTryTimeReqDto
+import team.startup.expo.domain.participation.presentation.dto.request.RecordEntryReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveStandardParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.response.CreateStandardParticipantResDto
+import team.startup.expo.domain.participation.presentation.dto.response.RecordEntryResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveStandardParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantNameResDto
 import team.startup.expo.domain.participation.service.CreateStandardParticipantService
 import team.startup.expo.domain.participation.service.GetStandardParticipantNamesService
 import team.startup.expo.domain.participation.service.IncreaseSmsTryTimeService
+import team.startup.expo.domain.participation.service.RecordEntryService
 import team.startup.expo.domain.participation.service.ResolveParticipantService
 import team.startup.expo.domain.participation.service.ResolveStandardParticipantService
 
@@ -36,6 +39,7 @@ class InternalParticipantController(
     private val getStandardParticipantNamesService: GetStandardParticipantNamesService,
     private val createStandardParticipantService: CreateStandardParticipantService,
     private val increaseSmsTryTimeService: IncreaseSmsTryTimeService,
+    private val recordEntryService: RecordEntryService,
 ) {
     @Operation(summary = "일반 참가자 id 조회", description = "박람회 id와 전화번호로 일반 참가자 id를 찾습니다. 없으면 404입니다.")
     @PostMapping("/standard-participants/resolve")
@@ -73,4 +77,13 @@ class InternalParticipantController(
     fun increaseSmsTryTime(
         @Valid @RequestBody reqDto: IncreaseSmsTryTimeReqDto,
     ) = increaseSmsTryTimeService.execute(reqDto)
+
+    @Operation(
+        summary = "박람회 입장 기록",
+        description = "박람회 id, 전화번호, 응답자 구분으로 참가자를 찾아 오늘의 입장을 기록하고 참가자 정보를 돌려줍니다. 참가자가 없으면 404, 오늘 이미 입장했으면 409입니다.",
+    )
+    @PostMapping("/entries")
+    fun recordEntry(
+        @Valid @RequestBody reqDto: RecordEntryReqDto,
+    ): RecordEntryResDto = recordEntryService.execute(reqDto)
 }
