@@ -20,6 +20,7 @@ import java.util.Base64
  * 토큰은 `<adminId>.<난수>` 형식이고 Redis에는 관리자당 해시 하나(`refresh_token:<adminId>`)만 둔다.
  * 소유자를 토큰에서 바로 알 수 있어 별도 색인이 필요 없고, 확인과 교체를 키 하나에 대한 단일
  * 스크립트로 처리할 수 있다. 원문은 저장하지 않고 SHA-256 해시만 저장한다.
+ * 관리자당 키 하나이므로 단일 기기 로그인 정책이다([RefreshTokenService.issue] 참고).
  */
 @Service
 class RefreshTokenServiceImpl(
