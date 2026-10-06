@@ -18,6 +18,11 @@ interface TraineeRepository : JpaRepository<Trainee, Long> {
         trainingId: String,
     ): List<TraineeNameView>
 
+    fun existsByExpoIdAndTrainingId(
+        expoId: String,
+        trainingId: String,
+    ): Boolean
+
     fun findNamesByExpoIdAndIdIn(
         expoId: String,
         ids: Collection<Long>,

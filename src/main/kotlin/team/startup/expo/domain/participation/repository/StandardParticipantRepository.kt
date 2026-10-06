@@ -1,6 +1,7 @@
 package team.startup.expo.domain.participation.repository
 
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import team.startup.expo.domain.participation.entity.StandardParticipant
@@ -28,4 +29,11 @@ interface StandardParticipantRepository : JpaRepository<StandardParticipant, Lon
         expoId: String,
         ids: Collection<Long>,
     ): List<StandardParticipantNameView>
+
+    /** 읽고 쓰는 사이에 다른 요청이 끼어도 횟수가 덮어써지지 않도록 DB에서 한 번에 올린다. */
+    @Modifying
+    @Query("UPDATE StandardParticipant p SET p.smsTryTime = p.smsTryTime + 1 WHERE p.id = :id")
+    fun increaseSmsTryTime(
+        @Param("id") id: Long,
+    ): Int
 }

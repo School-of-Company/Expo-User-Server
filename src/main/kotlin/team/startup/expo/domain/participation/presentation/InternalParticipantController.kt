@@ -2,17 +2,25 @@ package team.startup.expo.domain.participation.presentation
 
 import io.swagger.v3.oas.annotations.Operation
 import jakarta.validation.Valid
+import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import team.startup.expo.domain.participation.presentation.dto.request.CreateStandardParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.GetStandardParticipantNamesReqDto
+import team.startup.expo.domain.participation.presentation.dto.request.IncreaseSmsTryTimeReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveStandardParticipantReqDto
+import team.startup.expo.domain.participation.presentation.dto.response.CreateStandardParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveStandardParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantNameResDto
+import team.startup.expo.domain.participation.service.CreateStandardParticipantService
 import team.startup.expo.domain.participation.service.GetStandardParticipantNamesService
+import team.startup.expo.domain.participation.service.IncreaseSmsTryTimeService
 import team.startup.expo.domain.participation.service.ResolveParticipantService
 import team.startup.expo.domain.participation.service.ResolveStandardParticipantService
 
@@ -26,6 +34,8 @@ class InternalParticipantController(
     private val resolveStandardParticipantService: ResolveStandardParticipantService,
     private val resolveParticipantService: ResolveParticipantService,
     private val getStandardParticipantNamesService: GetStandardParticipantNamesService,
+    private val createStandardParticipantService: CreateStandardParticipantService,
+    private val increaseSmsTryTimeService: IncreaseSmsTryTimeService,
 ) {
     @Operation(summary = "일반 참가자 id 조회", description = "박람회 id와 전화번호로 일반 참가자 id를 찾습니다. 없으면 404입니다.")
     @PostMapping("/standard-participants/resolve")
@@ -44,4 +54,23 @@ class InternalParticipantController(
     fun resolveParticipant(
         @Valid @RequestBody reqDto: ResolveParticipantReqDto,
     ): ResolveParticipantResDto = resolveParticipantService.execute(reqDto)
+
+    @Operation(
+        summary = "일반 참가자 등록",
+        description = "새로 만들면 201, 같은 번호가 이미 있고 QR 문자를 두 번 미만 보냈으면 기존 참가자로 200, 두 번 이상 보냈으면 409입니다.",
+    )
+    @PostMapping("/standard-participants")
+    fun createStandardParticipant(
+        @Valid @RequestBody reqDto: CreateStandardParticipantReqDto,
+    ): ResponseEntity<CreateStandardParticipantResDto> {
+        val result = createStandardParticipantService.execute(reqDto)
+        return ResponseEntity.status(if (result.created) HttpStatus.CREATED else HttpStatus.OK).body(result)
+    }
+
+    @Operation(summary = "QR 문자 발송 횟수 증가", description = "QR 문자를 보낸 뒤 일반 참가자의 발송 횟수를 1 올립니다. 참가자가 없으면 404, 연수자는 400입니다.")
+    @PostMapping("/participants/sms-try")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun increaseSmsTryTime(
+        @Valid @RequestBody reqDto: IncreaseSmsTryTimeReqDto,
+    ) = increaseSmsTryTimeService.execute(reqDto)
 }
