@@ -22,7 +22,12 @@ import java.util.Base64
  * 실제 애플리케이션 컨텍스트를 PostgreSQL과 Redis 컨테이너 위에서 띄운다. 같은 설정을 쓰는 테스트 클래스는
  * 컨텍스트와 컨테이너를 공유한다.
  */
-@SpringBootTest(properties = ["eureka.client.enabled=false"])
+@SpringBootTest(
+    properties = [
+        "eureka.client.enabled=false",
+        "spring.jpa.properties.hibernate.generate_statistics=true",
+    ],
+)
 @AutoConfigureMockMvc
 @Import(IntegrationTestSupport.ContainersConfig::class)
 abstract class IntegrationTestSupport {
@@ -61,6 +66,8 @@ abstract class IntegrationTestSupport {
             registry.add("jwt.private-key") { generatePrivateKeyPem() }
             registry.add("internal.token") { INTERNAL_TOKEN }
             registry.add("survey-answer.consumer.auto-startup") { "false" }
+            registry.add("clients.expo.url") { FakeExpoServer.url }
+            registry.add("clients.expo.internal-token") { FakeExpoServer.TOKEN }
         }
 
         /** 서비스가 서명한 토큰을 테스트에서 검증할 수 있도록 키쌍을 한 번만 만들어 공유한다. */

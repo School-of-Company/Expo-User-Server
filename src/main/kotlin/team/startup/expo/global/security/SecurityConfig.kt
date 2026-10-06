@@ -64,7 +64,7 @@ class SecurityConfig {
                     .permitAll()
                     .requestMatchers(HttpMethod.DELETE, "/auth")
                     .hasAuthority(Authority.ROLE_ADMIN.name)
-                    .requestMatchers(HttpMethod.GET, "/admin", "/admin/my")
+                    .requestMatchers(HttpMethod.GET, "/admin", "/admin/my", "/trainee/{expo_id}", "/participant/{expo_id}")
                     .hasAuthority(Authority.ROLE_ADMIN.name)
                     .requestMatchers(HttpMethod.PATCH, "/admin/{admin_id}")
                     .hasAuthority(Authority.ROLE_ADMIN.name)

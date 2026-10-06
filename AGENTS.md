@@ -10,7 +10,7 @@ User service of the Expo MSA. Kotlin 2.3 / Spring Boot 4.1, Gradle, Java 21, Pos
 ## Boundaries
 
 - Domains: `domain/{auth,user,training,participation}`. `user` owns `Admin`, `training` owns `Trainee`, `participation` owns `StandardParticipant`.
-- Expo and Form data are referenced by ID only (`expo_id`, `survey_id`, `VARCHAR(36)`): no FK, no local entity. Reach Expo through Feign.
+- Expo and Form data are referenced by ID only (`expo_id`, `survey_id`, `VARCHAR(36)`): no FK, no local entity. Reach Expo through `ExpoPeriodReader` (Feign + circuit breaker; a missing expo is `null`, a failed call is 503, never "not found"). It sends `EXPO_INTERNAL_TOKEN`.
 - Post-event survey (후기) answers arrive from Form-Server over Kafka, asynchronously. Saving must be idempotent: `UNIQUE (survey_id, respondent)`.
 
 ## Auth

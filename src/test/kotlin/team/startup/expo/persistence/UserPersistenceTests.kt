@@ -32,6 +32,7 @@ import team.startup.expo.domain.training.entity.TraineeSurveyAnswer
 import team.startup.expo.domain.user.entity.Admin
 import team.startup.expo.domain.user.entity.Authority
 import team.startup.expo.domain.user.entity.Status
+import team.startup.expo.support.FakeExpoServer
 import team.startup.expo.support.IntegrationTestSupport
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -258,6 +259,7 @@ class UserPersistenceTests {
             registry.add("jwt.private-key") { IntegrationTestSupport.generatePrivateKeyPem() }
             registry.add("internal.token") { IntegrationTestSupport.INTERNAL_TOKEN }
             registry.add("survey-answer.consumer.auto-startup") { "false" }
+            registry.add("clients.expo.internal-token") { FakeExpoServer.TOKEN }
         }
 
         private fun admin(
