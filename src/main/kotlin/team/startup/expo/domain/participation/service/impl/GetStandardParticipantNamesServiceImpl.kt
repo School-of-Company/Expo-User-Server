@@ -15,25 +15,30 @@ class GetStandardParticipantNamesServiceImpl(
 ) : GetStandardParticipantNamesService {
     /**
      * 요청한 id를 모두 돌려주거나 아예 실패한다. 없는 id와 다른 박람회의 참가자를 구분하지 않고 같은 404로
-     * 처리해, 다른 박람회의 참가자 존재 여부가 드러나지 않게 한다. 중복 id는 한 번만 반환하고 순서는
-     * 요청 순서를 따른다.
+     * 처리해, 다른 박람회의 참가자 존재 여부가 드러나지 않게 한다. 실패할 때는 호출자가 보낸 id 중 어느 것을
+     * 찾지 못했는지 알려 준다(호출자가 이미 아는 값이라 새로 드러나는 정보는 없다). 중복 id는 한 번만 반환하고
+     * 순서는 요청 순서를 따른다.
      */
     @Transactional(readOnly = true)
     override fun execute(reqDto: GetStandardParticipantNamesReqDto): List<StandardParticipantNameResDto> {
         val ids = reqDto.participantIds.distinct()
-        // id가 많아도 IN 절이 한없이 길어지지 않도록 나눠서 조회한다
-        val found =
+        // id가 많아도 IN 절이 한없이 길어지지 않도록 나눠서 조회한다. 이름만 필요하므로 투영으로 읽는다
+        val names =
             ids
                 .chunked(QUERY_CHUNK_SIZE)
-                .flatMap { standardParticipantRepository.findAllByExpoIdAndIdIn(reqDto.expoId, it) }
-                .associateBy { requireNotNull(it.id) }
-        if (found.size != ids.size) {
-            throw ExpectedException(HttpStatus.NOT_FOUND, "요청한 참가자 중 찾을 수 없는 참가자가 있습니다.")
+                .flatMap { standardParticipantRepository.findNamesByExpoIdAndIdIn(reqDto.expoId, it) }
+                .associate { it.id to it.name }
+        if (names.size != ids.size) {
+            val missing = ids.filterNot(names::containsKey)
+            val shown = missing.take(MAX_REPORTED_IDS).joinToString(", ")
+            val rest = if (missing.size > MAX_REPORTED_IDS) " 외 ${missing.size - MAX_REPORTED_IDS}개" else ""
+            throw ExpectedException(HttpStatus.NOT_FOUND, "요청한 참가자 중 찾을 수 없는 참가자가 있습니다. (id: $shown$rest)")
         }
-        return ids.map { StandardParticipantNameResDto(participantId = it, name = found.getValue(it).name) }
+        return ids.map { StandardParticipantNameResDto(participantId = it, name = names.getValue(it)) }
     }
 
     private companion object {
         const val QUERY_CHUNK_SIZE = 1_000
+        const val MAX_REPORTED_IDS = 20
     }
 }

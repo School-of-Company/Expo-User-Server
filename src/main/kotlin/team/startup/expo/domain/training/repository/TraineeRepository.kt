@@ -6,7 +6,13 @@ import org.springframework.data.repository.query.Param
 import team.startup.expo.domain.training.entity.Trainee
 
 interface TraineeRepository : JpaRepository<Trainee, Long> {
-    /** 전화번호는 숫자만 남겨 비교한다. 한 박람회 안에서만 훑으므로 `expo_id` 인덱스로 범위가 좁혀진다. */
+    /** 저장된 표기와 정확히 같은 번호. `(expo_id, phone_number)` 유일 인덱스를 탄다. */
+    fun findByExpoIdAndPhoneNumber(
+        expoId: String,
+        phoneNumber: String,
+    ): Trainee?
+
+    /** 숫자만 남겨 비교한다. `idx_trainee_expo_phone_digits` 표현식 인덱스와 같은 식이어야 인덱스를 탄다. */
     @Query(
         value =
             "SELECT * FROM tb_trainee " +

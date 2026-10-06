@@ -1,25 +1,27 @@
 package team.startup.expo.domain.participation.service.impl
 
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
+import team.startup.expo.domain.participation.entity.ParticipationType
+import team.startup.expo.domain.participation.presentation.dto.request.ResolveParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveStandardParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveStandardParticipantResDto
-import team.startup.expo.domain.participation.repository.StandardParticipantRepository
+import team.startup.expo.domain.participation.service.ResolveParticipantService
 import team.startup.expo.domain.participation.service.ResolveStandardParticipantService
-import team.startup.expo.global.exception.ExpectedException
-import team.startup.expo.global.util.PhoneNumbers
 
+/** Expo 서비스가 쓰는 일반 참가자 전용 경로. 조회 로직은 [ResolveParticipantService]와 같은 것을 쓴다. */
 @Service
 class ResolveStandardParticipantServiceImpl(
-    private val standardParticipantRepository: StandardParticipantRepository,
+    private val resolveParticipantService: ResolveParticipantService,
 ) : ResolveStandardParticipantService {
-    @Transactional(readOnly = true)
     override fun execute(reqDto: ResolveStandardParticipantReqDto): ResolveStandardParticipantResDto {
-        val candidates = standardParticipantRepository.findAllByExpoIdAndDigits(reqDto.expoId, PhoneNumbers.digitsOnly(reqDto.phoneNumber))
-        val participant =
-            PhoneNumbers.select(candidates, reqDto.phoneNumber) { it.phoneNumber }
-                ?: throw ExpectedException(HttpStatus.NOT_FOUND, "행사 참가자를 찾지 못 했습니다.")
-        return ResolveStandardParticipantResDto(participantId = requireNotNull(participant.id))
+        val resolved =
+            resolveParticipantService.execute(
+                ResolveParticipantReqDto(
+                    expoId = reqDto.expoId,
+                    phoneNumber = reqDto.phoneNumber,
+                    participationType = ParticipationType.STANDARD,
+                ),
+            )
+        return ResolveStandardParticipantResDto(participantId = resolved.participantId)
     }
 }

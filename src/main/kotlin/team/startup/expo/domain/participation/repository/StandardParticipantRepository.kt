@@ -6,7 +6,13 @@ import org.springframework.data.repository.query.Param
 import team.startup.expo.domain.participation.entity.StandardParticipant
 
 interface StandardParticipantRepository : JpaRepository<StandardParticipant, Long> {
-    /** 전화번호는 숫자만 남겨 비교한다. 한 박람회 안에서만 훑으므로 `expo_id` 인덱스로 범위가 좁혀진다. */
+    /** 저장된 표기와 정확히 같은 번호. `(expo_id, phone_number)` 유일 인덱스를 탄다. */
+    fun findByExpoIdAndPhoneNumber(
+        expoId: String,
+        phoneNumber: String,
+    ): StandardParticipant?
+
+    /** 숫자만 남겨 비교한다. `idx_standard_participant_expo_phone_digits` 표현식 인덱스와 같은 식이어야 인덱스를 탄다. */
     @Query(
         value =
             "SELECT * FROM tb_standard_participant " +
@@ -18,8 +24,8 @@ interface StandardParticipantRepository : JpaRepository<StandardParticipant, Lon
         @Param("digits") digits: String,
     ): List<StandardParticipant>
 
-    fun findAllByExpoIdAndIdIn(
+    fun findNamesByExpoIdAndIdIn(
         expoId: String,
         ids: Collection<Long>,
-    ): List<StandardParticipant>
+    ): List<StandardParticipantNameView>
 }
