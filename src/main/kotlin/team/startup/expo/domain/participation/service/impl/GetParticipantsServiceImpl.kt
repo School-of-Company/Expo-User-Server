@@ -41,7 +41,7 @@ class GetParticipantsServiceImpl(
         val attendees = participationRepository.findAttendees(expoId, date, pageable)
         return GetParticipantResDto(
             info = ParticipantPageInfoResDto(totalPage = attendees.totalPages, totalElement = attendees.totalElements.toInt()),
-            participant = attendees.content,
+            participants = attendees.content,
         )
     }
 
