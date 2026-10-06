@@ -148,8 +148,29 @@ class InternalParticipantApiTests : IntegrationTestSupport() {
     @Test
     fun `id 목록이 비었거나 너무 많으면 400이다`() {
         names(EXPO_A, emptyList()).andExpect(status().isBadRequest)
-        names(EXPO_A, (1L..501L).toList()).andExpect(status().isBadRequest)
+        names(EXPO_A, (1L..10_001L).toList()).andExpect(status().isBadRequest)
         postInternal("/internal/standard-participants/names", """{"expoId":"$EXPO_A"}""").andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `501개 이상도 한 번에 조회하고 요청 순서를 유지한다`() {
+        val ids = (1..2_500).map { saveStandard(EXPO_A, "0102%07d".format(it), "참가자$it") }
+        val requested = ids.reversed() + standard1
+
+        names(EXPO_A, requested)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.length()").value(requested.size))
+            .andExpect(jsonPath("$[0].participantId").value(ids.last()))
+            .andExpect(jsonPath("$[0].name").value("참가자2500"))
+            .andExpect(jsonPath("$[1249].participantId").value(ids[2500 - 1250]))
+            .andExpect(jsonPath("$[2499].name").value("참가자1"))
+            .andExpect(jsonPath("$[2500].participantId").value(standard1))
+    }
+
+    @Test
+    fun `상한까지는 크기만으로 거절하지 않는다`() {
+        // 존재하지 않는 id가 섞여 있으므로 400이 아니라 404여야 한다
+        names(EXPO_A, (1L..10_000L).toList()).andExpect(status().isNotFound)
     }
 
     // --- 인증
