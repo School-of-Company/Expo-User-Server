@@ -21,10 +21,19 @@ class GetStandardParticipantNamesServiceImpl(
     @Transactional(readOnly = true)
     override fun execute(reqDto: GetStandardParticipantNamesReqDto): List<StandardParticipantNameResDto> {
         val ids = reqDto.participantIds.distinct()
-        val found = standardParticipantRepository.findAllByExpoIdAndIdIn(reqDto.expoId, ids).associateBy { requireNotNull(it.id) }
+        // id가 많아도 IN 절이 한없이 길어지지 않도록 나눠서 조회한다
+        val found =
+            ids
+                .chunked(QUERY_CHUNK_SIZE)
+                .flatMap { standardParticipantRepository.findAllByExpoIdAndIdIn(reqDto.expoId, it) }
+                .associateBy { requireNotNull(it.id) }
         if (found.size != ids.size) {
             throw ExpectedException(HttpStatus.NOT_FOUND, "요청한 참가자 중 찾을 수 없는 참가자가 있습니다.")
         }
         return ids.map { StandardParticipantNameResDto(participantId = it, name = found.getValue(it).name) }
+    }
+
+    private companion object {
+        const val QUERY_CHUNK_SIZE = 1_000
     }
 }

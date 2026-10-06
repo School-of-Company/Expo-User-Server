@@ -13,6 +13,7 @@ data class GetStandardParticipantNamesReqDto(
     val participantIds: List<Long>,
 ) {
     companion object {
-        const val MAX_PARTICIPANT_IDS = 500
+        /** 요청 하나의 상한이다. 프로그램 참가자 전체를 한 번에 보내는 호출자를 위해 넉넉하게 두고, 넘으면 호출자가 나눠 보낸다. */
+        const val MAX_PARTICIPANT_IDS = 10_000
     }
 }
