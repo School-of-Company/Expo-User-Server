@@ -18,6 +18,7 @@ User service of the Expo MSA. Kotlin 2.3 / Spring Boot 4.1, Gradle, Java 21, Pos
 - The gateway verifies the JWT (RS256, verify-only) and forwards only `X-User-Id` (JWT `sub` = `Admin.id`). Do not parse tokens or trust that header outside the gateway path; service-to-service calls bypass the gateway.
 - This service signs tokens with RS256. Never commit keys.
 - Until the gateway forwards a role header, resolve authority from the `Admin` row.
+- Service-to-service endpoints live under `/internal` and are authenticated only by the `X-Internal-Token` shared secret (`INTERNAL_TOKEN`); `X-User-Id` is ignored there. Never add an `/internal` prefix to the gateway routing table. Phone numbers go in request bodies, never in URLs.
 
 ## Conventions
 
