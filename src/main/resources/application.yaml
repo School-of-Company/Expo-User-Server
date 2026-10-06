@@ -11,7 +11,7 @@ spring:
       ddl-auto: validate
 jwt:
   private-key: ${JWT_PRIVATE_KEY}
-  access-token-ttl: 24h
+  access-token-ttl: 15m
   refresh-token-ttl: 7d
 internal:
   token: ${INTERNAL_TOKEN}
