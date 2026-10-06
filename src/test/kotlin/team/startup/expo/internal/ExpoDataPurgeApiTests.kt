@@ -229,6 +229,38 @@ class ExpoDataPurgeApiTests : IntegrationTestSupport() {
         count("tb_trainee", expoA) shouldBe 0
     }
 
+    @Test
+    fun `expo_id를 바꾸지 않는 수정은 진행 중인 삭제의 lock을 기다리지 않는다`() {
+        val traineeId = traineeRepository.saveAndFlush(trainee(expoA)).id!!
+        val participantId = standardParticipantRepository.saveAndFlush(participant(expoA)).id!!
+        val locked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val deleting =
+            executor.submit {
+                transactionTemplate.executeWithoutResult {
+                    jdbcTemplate.query("SELECT pg_advisory_xact_lock(?, hashtext(?))", { _ -> }, ExpoDeletionLock.NAMESPACE, expoA)
+                    locked.countDown()
+                    release.await(10, TimeUnit.SECONDS)
+                }
+            }
+        locked.await(10, TimeUnit.SECONDS) shouldBe true
+
+        // Hibernate의 일반 UPDATE처럼 같은 expo_id를 SET 절에 포함해도 공유 lock을 잡지 않아야 교착 상태가 생기지 않는다
+        val updating =
+            executor.submit {
+                jdbcTemplate.update("UPDATE tb_trainee SET expo_id = ?, name = ? WHERE id = ?", expoA, "수정", traineeId)
+                jdbcTemplate.update("UPDATE tb_standard_participant SET expo_id = ?, name = ? WHERE id = ?", expoA, "수정", participantId)
+            }
+        try {
+            updating.get(BLOCK_CHECK_MILLIS * 4, TimeUnit.MILLISECONDS)
+        } finally {
+            release.countDown()
+            deleting.get(10, TimeUnit.SECONDS)
+        }
+        nameOf("tb_trainee", traineeId) shouldBe "수정"
+        nameOf("tb_standard_participant", participantId) shouldBe "수정"
+    }
+
     private fun purge(expoId: String) = mockMvc.perform(delete("/internal/expos/$expoId").header("X-Internal-Token", INTERNAL_TOKEN))
 
     private fun seed(expoId: String) {
@@ -262,6 +294,11 @@ class ExpoDataPurgeApiTests : IntegrationTestSupport() {
         table: String,
         expoId: String,
     ) = jdbcTemplate.queryForObject("SELECT count(*) FROM $table WHERE expo_id = ?", Long::class.java, expoId)
+
+    private fun nameOf(
+        table: String,
+        id: Long,
+    ) = jdbcTemplate.queryForObject("SELECT name FROM $table WHERE id = ?", String::class.java, id)
 
     private fun countAnswers(
         answerTable: String,

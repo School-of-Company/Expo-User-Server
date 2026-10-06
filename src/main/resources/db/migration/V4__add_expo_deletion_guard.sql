@@ -26,14 +26,31 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_trainee_expo_deletion_guard
-    BEFORE INSERT OR UPDATE OF expo_id
+-- UPDATE는 expo_id 값이 실제로 바뀔 때만 검사한다. `UPDATE OF expo_id`만으로는 값이 같아도 SET 절에 expo_id가
+-- 있으면 실행되는데, Hibernate의 일반 UPDATE는 모든 컬럼을 SET하므로 다른 컬럼만 고쳐도 행 락을 쥔 채 공유
+-- lock을 기다리게 된다. 삭제는 배타 lock을 쥔 채 그 행을 지우려고 행 락을 기다리므로 교착 상태가 생긴다.
+CREATE TRIGGER trg_trainee_expo_deletion_guard_insert
+    BEFORE INSERT
     ON tb_trainee
     FOR EACH ROW
 EXECUTE FUNCTION reject_participant_of_deleted_expo();
 
-CREATE TRIGGER trg_standard_participant_expo_deletion_guard
-    BEFORE INSERT OR UPDATE OF expo_id
+CREATE TRIGGER trg_trainee_expo_deletion_guard_update
+    BEFORE UPDATE OF expo_id
+    ON tb_trainee
+    FOR EACH ROW
+    WHEN (OLD.expo_id IS DISTINCT FROM NEW.expo_id)
+EXECUTE FUNCTION reject_participant_of_deleted_expo();
+
+CREATE TRIGGER trg_standard_participant_expo_deletion_guard_insert
+    BEFORE INSERT
     ON tb_standard_participant
     FOR EACH ROW
+EXECUTE FUNCTION reject_participant_of_deleted_expo();
+
+CREATE TRIGGER trg_standard_participant_expo_deletion_guard_update
+    BEFORE UPDATE OF expo_id
+    ON tb_standard_participant
+    FOR EACH ROW
+    WHEN (OLD.expo_id IS DISTINCT FROM NEW.expo_id)
 EXECUTE FUNCTION reject_participant_of_deleted_expo();
