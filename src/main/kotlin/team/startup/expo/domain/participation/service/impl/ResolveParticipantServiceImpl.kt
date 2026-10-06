@@ -10,6 +10,7 @@ import team.startup.expo.domain.participation.repository.StandardParticipantRepo
 import team.startup.expo.domain.participation.service.ResolveParticipantService
 import team.startup.expo.domain.training.repository.TraineeRepository
 import team.startup.expo.global.exception.ExpectedException
+import team.startup.expo.global.util.PhoneNumbers
 
 /**
  * 같은 번호가 같은 박람회에 연수자와 일반 참가자 양쪽으로 신청할 수 있으므로(`(expo_id, phone_number)`
@@ -22,14 +23,17 @@ class ResolveParticipantServiceImpl(
 ) : ResolveParticipantService {
     @Transactional(readOnly = true)
     override fun execute(reqDto: ResolveParticipantReqDto): ResolveParticipantResDto {
+        val digits = PhoneNumbers.digitsOnly(reqDto.phoneNumber)
         val participantId =
             when (reqDto.participationType) {
                 ParticipationType.STANDARD -> {
-                    standardParticipantRepository.findByExpoIdAndPhoneNumber(reqDto.expoId, reqDto.phoneNumber)?.id
+                    val candidates = standardParticipantRepository.findAllByExpoIdAndDigits(reqDto.expoId, digits)
+                    PhoneNumbers.select(candidates, reqDto.phoneNumber) { it.phoneNumber }?.id
                 }
 
                 ParticipationType.TRAINEE -> {
-                    traineeRepository.findByExpoIdAndPhoneNumber(reqDto.expoId, reqDto.phoneNumber)?.id
+                    val candidates = traineeRepository.findAllByExpoIdAndDigits(reqDto.expoId, digits)
+                    PhoneNumbers.select(candidates, reqDto.phoneNumber) { it.phoneNumber }?.id
                 }
             } ?: throw ExpectedException(HttpStatus.NOT_FOUND, "행사 참가자를 찾지 못 했습니다.")
         return ResolveParticipantResDto(participantId = participantId, participationType = reqDto.participationType)
