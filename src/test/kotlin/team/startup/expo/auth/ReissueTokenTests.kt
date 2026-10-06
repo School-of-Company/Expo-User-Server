@@ -2,8 +2,12 @@ package team.startup.expo.auth
 
 import io.jsonwebtoken.Jwts
 import io.kotest.matchers.shouldBe
+import org.hamcrest.Matchers.matchesPattern
+import org.hamcrest.Matchers.not
+import org.hamcrest.Matchers.startsWith
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 class ReissueTokenTests : AuthFlowTestSupport() {
@@ -25,6 +29,18 @@ class ReissueTokenTests : AuthFlowTestSupport() {
         (body["refreshToken"].asString() == first.refreshToken) shouldBe false
         body["accessTokenExpiresIn"].asString().isNotBlank() shouldBe true
         body["refreshTokenExpiresIn"].asString().isNotBlank() shouldBe true
+    }
+
+    @Test
+    fun `재발급 응답도 노션 형식의 만료 시각이고 토큰에는 Bearer 접두사가 없다`() {
+        val first = signInAsAccepted()
+
+        reissue(first.refreshToken)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.accessTokenExpiresIn").value(matchesPattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$")))
+            .andExpect(jsonPath("$.refreshTokenExpiresIn").value(matchesPattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$")))
+            .andExpect(jsonPath("$.accessToken").value(not(startsWith("Bearer "))))
+            .andExpect(jsonPath("$.refreshToken").value(not(startsWith("Bearer "))))
     }
 
     @Test
