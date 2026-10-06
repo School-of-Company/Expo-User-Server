@@ -12,6 +12,17 @@ interface TraineeRepository : JpaRepository<Trainee, Long> {
         phoneNumber: String,
     ): Trainee?
 
+    /** 같은 박람회에 같은 연수 번호가 여러 명 있을 수 있으므로(유일 제약은 전화번호뿐이다) 목록으로 읽어 중복을 구분한다. */
+    fun findAllByExpoIdAndTrainingId(
+        expoId: String,
+        trainingId: String,
+    ): List<TraineeNameView>
+
+    fun findNamesByExpoIdAndIdIn(
+        expoId: String,
+        ids: Collection<Long>,
+    ): List<TraineeNameView>
+
     fun findByExpoIdOrderById(expoId: String): List<TraineeInfoView>
 
     /** `Containing`은 이름에 든 `%`와 `_`를 와일드카드가 아닌 글자로 취급한다. */
