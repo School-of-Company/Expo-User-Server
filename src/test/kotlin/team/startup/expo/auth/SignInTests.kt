@@ -2,6 +2,9 @@ package team.startup.expo.auth
 
 import io.jsonwebtoken.Jwts
 import io.kotest.matchers.shouldBe
+import org.hamcrest.Matchers.matchesPattern
+import org.hamcrest.Matchers.not
+import org.hamcrest.Matchers.startsWith
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -94,6 +97,16 @@ class SignInTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `만료 시각은 노션 형식이고 토큰에는 Bearer 접두사가 없다`() {
+        signIn("accepted")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.accessTokenExpiresIn").value(matchesPattern(EXPIRES_IN_PATTERN)))
+            .andExpect(jsonPath("$.refreshTokenExpiresIn").value(matchesPattern(EXPIRES_IN_PATTERN)))
+            .andExpect(jsonPath("$.accessToken").value(not(startsWith("Bearer "))))
+            .andExpect(jsonPath("$.refreshToken").value(not(startsWith("Bearer "))))
+    }
+
+    @Test
     fun `닉네임이 없으면 404이다`() {
         signIn("nobody").andExpect(status().isNotFound)
     }
@@ -149,5 +162,8 @@ class SignInTests : IntegrationTestSupport() {
 
     private companion object {
         const val PASSWORD = "Passw0rd!"
+
+        // 노션 명세: yyyy-MM-dd'T'HH:mm:ss (소수점 초 없음)
+        const val EXPIRES_IN_PATTERN = "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$"
     }
 }
