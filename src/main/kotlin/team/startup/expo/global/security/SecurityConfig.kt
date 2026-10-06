@@ -58,6 +58,8 @@ class SecurityConfig {
                     .permitAll()
                     .requestMatchers(HttpMethod.DELETE, "/auth")
                     .hasAuthority(Authority.ROLE_ADMIN.name)
+                    .requestMatchers(HttpMethod.GET, "/admin", "/admin/my")
+                    .hasAuthority(Authority.ROLE_ADMIN.name)
                     .anyRequest()
                     .denyAll()
             }
