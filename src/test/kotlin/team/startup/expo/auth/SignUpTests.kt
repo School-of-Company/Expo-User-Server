@@ -74,6 +74,20 @@ class SignUpTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `이메일에 @가 둘 이상이거나 형식이 틀리면 400이고 저장되지 않는다`() {
+        listOf("a@b@c", "a@@b.com", "@b.com", "a@", "a b@c.com", "a@b c.com", "plainaddress")
+            .forEach { signUp(email = it).andExpect(status().isBadRequest) }
+        adminRepository.count() shouldBe 0L
+    }
+
+    @Test
+    fun `일반적인 이메일 형식은 가입된다`() {
+        signUp(email = "user.name+tag@gsm.hs.kr").andExpect(status().isCreated)
+
+        adminRepository.findByNickname("admin1")!!.email shouldBe "user.name+tag@gsm.hs.kr"
+    }
+
+    @Test
     fun `이메일 형식과 필수 값을 검증한다`() {
         signUp(email = "not-an-email").andExpect(status().isBadRequest)
         signUp(name = " ").andExpect(status().isBadRequest)

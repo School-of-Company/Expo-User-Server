@@ -1,5 +1,6 @@
 package team.startup.expo.domain.auth.presentation.dto.request
 
+import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
@@ -13,7 +14,7 @@ data class SignUpReqDto(
     val nickname: String,
     @field:NotBlank
     @field:Size(max = 100)
-    @field:Pattern(regexp = ".+@.+", message = "이메일 형식에 맞지 않습니다.")
+    @field:Email(message = "이메일 형식에 맞지 않습니다.")
     val email: String,
     @field:NotBlank
     @field:Pattern(
