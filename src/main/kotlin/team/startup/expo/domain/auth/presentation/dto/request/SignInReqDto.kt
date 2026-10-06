@@ -7,4 +7,6 @@ data class SignInReqDto(
     val nickname: String,
     @field:NotBlank
     val password: String,
-)
+) {
+    override fun toString() = "SignInReqDto(nickname=$nickname, password=***)"
+}

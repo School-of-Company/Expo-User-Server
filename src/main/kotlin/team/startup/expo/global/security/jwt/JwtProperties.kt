@@ -12,4 +12,7 @@ data class JwtProperties(
     val privateKey: String,
     val accessTokenTtl: Duration = Duration.ofHours(24),
     val refreshTokenTtl: Duration = Duration.ofDays(7),
-)
+) {
+    // data class의 기본 toString은 개인키를 그대로 출력한다
+    override fun toString() = "JwtProperties(privateKey=***, accessTokenTtl=$accessTokenTtl, refreshTokenTtl=$refreshTokenTtl)"
+}

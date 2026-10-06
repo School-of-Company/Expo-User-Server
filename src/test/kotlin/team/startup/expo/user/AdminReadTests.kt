@@ -32,7 +32,7 @@ class AdminReadTests : IntegrationTestSupport() {
     @Test
     fun `내 정보는 이름 닉네임 이메일만 돌려준다`() {
         mockMvc
-            .perform(get("/admin/my").header("X-User-Id", acceptedAdminId))
+            .perform(get("/admin/my").header("Authorization", bearerOf(acceptedAdminId)))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.name").value("관리자"))
             .andExpect(jsonPath("$.nickname").value("accepted"))
@@ -44,7 +44,7 @@ class AdminReadTests : IntegrationTestSupport() {
     @Test
     fun `승인 대기 목록에는 대기 중인 관리자만 있고 비밀번호는 없다`() {
         mockMvc
-            .perform(get("/admin").header("X-User-Id", acceptedAdminId))
+            .perform(get("/admin").header("Authorization", bearerOf(acceptedAdminId)))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.length()").value(2))
             .andExpect(jsonPath("$[?(@.nickname=='accepted')]").isEmpty)
@@ -58,7 +58,7 @@ class AdminReadTests : IntegrationTestSupport() {
         jdbcTemplate.execute("DELETE FROM tb_admin WHERE status = 'PENDING'")
 
         mockMvc
-            .perform(get("/admin").header("X-User-Id", acceptedAdminId))
+            .perform(get("/admin").header("Authorization", bearerOf(acceptedAdminId)))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.length()").value(0))
     }
@@ -71,13 +71,13 @@ class AdminReadTests : IntegrationTestSupport() {
 
     @Test
     fun `승인 전 관리자는 403이다`() {
-        mockMvc.perform(get("/admin/my").header("X-User-Id", pendingAdminId)).andExpect(status().isForbidden)
-        mockMvc.perform(get("/admin").header("X-User-Id", pendingAdminId)).andExpect(status().isForbidden)
+        mockMvc.perform(get("/admin/my").header("Authorization", bearerOf(pendingAdminId))).andExpect(status().isForbidden)
+        mockMvc.perform(get("/admin").header("Authorization", bearerOf(pendingAdminId))).andExpect(status().isForbidden)
     }
 
     @Test
     fun `존재하지 않는 관리자는 401이다`() {
-        mockMvc.perform(get("/admin/my").header("X-User-Id", 99999)).andExpect(status().isUnauthorized)
+        mockMvc.perform(get("/admin/my").header("Authorization", bearerOf(99999))).andExpect(status().isUnauthorized)
     }
 
     private fun admin(

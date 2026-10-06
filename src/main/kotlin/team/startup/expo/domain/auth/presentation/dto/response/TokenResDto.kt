@@ -8,4 +8,7 @@ data class TokenResDto(
     val refreshToken: String,
     val accessTokenExpiresIn: LocalDateTime,
     val refreshTokenExpiresIn: LocalDateTime,
-)
+) {
+    override fun toString() =
+        "TokenResDto(accessToken=***, refreshToken=***, accessTokenExpiresIn=$accessTokenExpiresIn, refreshTokenExpiresIn=$refreshTokenExpiresIn)"
+}
