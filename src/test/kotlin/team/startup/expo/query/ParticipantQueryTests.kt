@@ -19,13 +19,13 @@ class ParticipantQueryTests : QueryApiTestSupport() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.info.totalPage").value(1))
             .andExpect(jsonPath("$.info.totalElement").value(1))
-            .andExpect(jsonPath("$.participant.length()").value(1))
-            .andExpect(jsonPath("$.participant[0].id").value(today.id))
-            .andExpect(jsonPath("$.participant[0].name").value("홍길동"))
-            .andExpect(jsonPath("$.participant[0].phoneNumber").value("01011112222"))
-            .andExpect(jsonPath("$.participant[0].informationStatus").value(true))
-            // 목록 필드 이름은 participants가 아니라 participant다
-            .andExpect(jsonPath("$.participants").doesNotExist())
+            .andExpect(jsonPath("$.participants.length()").value(1))
+            .andExpect(jsonPath("$.participants[0].id").value(today.id))
+            .andExpect(jsonPath("$.participants[0].name").value("홍길동"))
+            .andExpect(jsonPath("$.participants[0].phoneNumber").value("01011112222"))
+            .andExpect(jsonPath("$.participants[0].informationStatus").value(true))
+            // 목록 필드 이름은 v1과 Expo-Client가 쓰는 participants다(노션의 participant가 아니다)
+            .andExpect(jsonPath("$.participant").doesNotExist())
     }
 
     @Test
@@ -38,8 +38,8 @@ class ParticipantQueryTests : QueryApiTestSupport() {
         fetch(EXPO_A, "date" to TODAY.minusDays(1).toString())
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.info.totalElement").value(1))
-            .andExpect(jsonPath("$.participant[0].id").value(yesterday.id))
-            .andExpect(jsonPath("$.participant[0].informationStatus").value(false))
+            .andExpect(jsonPath("$.participants[0].id").value(yesterday.id))
+            .andExpect(jsonPath("$.participants[0].informationStatus").value(false))
     }
 
     @Test
@@ -50,16 +50,16 @@ class ParticipantQueryTests : QueryApiTestSupport() {
         fetch(EXPO_A, "page" to "0", "size" to "2")
             .andExpect(jsonPath("$.info.totalPage").value(3))
             .andExpect(jsonPath("$.info.totalElement").value(5))
-            .andExpect(jsonPath("$.participant.length()").value(2))
-            .andExpect(jsonPath("$.participant[0].id").value(participants[0].id))
-            .andExpect(jsonPath("$.participant[1].id").value(participants[1].id))
+            .andExpect(jsonPath("$.participants.length()").value(2))
+            .andExpect(jsonPath("$.participants[0].id").value(participants[0].id))
+            .andExpect(jsonPath("$.participants[1].id").value(participants[1].id))
         fetch(EXPO_A, "page" to "2", "size" to "2")
-            .andExpect(jsonPath("$.participant.length()").value(1))
-            .andExpect(jsonPath("$.participant[0].id").value(participants[4].id))
+            .andExpect(jsonPath("$.participants.length()").value(1))
+            .andExpect(jsonPath("$.participants[0].id").value(participants[4].id))
         // 범위를 벗어난 페이지는 빈 목록이고 합계는 그대로다
         fetch(EXPO_A, "page" to "3", "size" to "2")
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.participant.length()").value(0))
+            .andExpect(jsonPath("$.participants.length()").value(0))
             .andExpect(jsonPath("$.info.totalElement").value(5))
     }
 
@@ -69,7 +69,7 @@ class ParticipantQueryTests : QueryApiTestSupport() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.info.totalPage").value(0))
             .andExpect(jsonPath("$.info.totalElement").value(0))
-            .andExpect(jsonPath("$.participant.length()").value(0))
+            .andExpect(jsonPath("$.participants.length()").value(0))
     }
 
     @Test
@@ -78,7 +78,7 @@ class ParticipantQueryTests : QueryApiTestSupport() {
         attend(saveParticipant(EXPO_A, "홍길동", "01011112222"), TODAY)
         attend(saveParticipant(EXPO_C, "다른행사", "01033334444"), TODAY)
 
-        fetch(EXPO_A).andExpect(jsonPath("$.info.totalElement").value(1)).andExpect(jsonPath("$.participant[0].name").value("홍길동"))
+        fetch(EXPO_A).andExpect(jsonPath("$.info.totalElement").value(1)).andExpect(jsonPath("$.participants[0].name").value("홍길동"))
     }
 
     @Test
