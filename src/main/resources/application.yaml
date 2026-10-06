@@ -9,9 +9,24 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    consumer:
+      group-id: ${KAFKA_SURVEY_ANSWER_GROUP_ID:expo-user-server.survey-answer}
+      auto-offset-reset: earliest
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
 jwt:
   private-key: ${JWT_PRIVATE_KEY}
   access-token-ttl: 24h
   refresh-token-ttl: 7d
 internal:
   token: ${INTERNAL_TOKEN}
+survey-answer:
+  submit-topic: ${KAFKA_SURVEY_ANSWER_SUBMIT_TOPIC:survey.answer.submit}
+  result-topic: ${KAFKA_SURVEY_ANSWER_RESULT_TOPIC:survey.answer.result}
+  dead-letter-topic: ${KAFKA_SURVEY_ANSWER_DEAD_LETTER_TOPIC:survey.answer.submit.dlt}
+  consumer:
+    auto-startup: true
