@@ -15,12 +15,13 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import team.startup.expo.domain.user.entity.Authority
 import team.startup.expo.domain.user.repository.AdminRepository
 import team.startup.expo.global.exception.ErrorResponse
+import team.startup.expo.global.security.jwt.JwtProvider
 import tools.jackson.databind.ObjectMapper
 
 /**
- * 인증은 gateway가 검증해 전달한 `X-User-Id`로 한다(`GatewayHeaderAuthenticationFilter`).
- * 이 서비스는 토큰을 파싱하지 않는다. 명시하지 않은 경로는 전부 막아 두고, 도메인을 추가할 때
- * 경로별 규칙을 여기에 더한다.
+ * 관리자 인증은 `Authorization` 토큰을 직접 검증해 한다(`AccessTokenAuthenticationFilter`). 서비스 간
+ * 호출은 `/internal` 하위 경로에서 `X-Internal-Token`으로 한다(`InternalTokenAuthenticationFilter`).
+ * 명시하지 않은 경로는 전부 막아 두고, 도메인을 추가할 때 경로별 규칙을 여기에 더한다.
  */
 @Configuration
 @EnableWebSecurity
@@ -33,6 +34,7 @@ class SecurityConfig {
         http: HttpSecurity,
         objectMapper: ObjectMapper,
         adminRepository: AdminRepository,
+        jwtProvider: JwtProvider,
         internalProperties: InternalProperties,
     ): SecurityFilterChain {
         http
@@ -41,8 +43,10 @@ class SecurityConfig {
             .formLogin { it.disable() }
             .httpBasic { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
-            .addFilterBefore(GatewayHeaderAuthenticationFilter(adminRepository), UsernamePasswordAuthenticationFilter::class.java)
-            .addFilterBefore(InternalTokenAuthenticationFilter(internalProperties), UsernamePasswordAuthenticationFilter::class.java)
+            .addFilterBefore(
+                AccessTokenAuthenticationFilter(adminRepository, jwtProvider),
+                UsernamePasswordAuthenticationFilter::class.java,
+            ).addFilterBefore(InternalTokenAuthenticationFilter(internalProperties), UsernamePasswordAuthenticationFilter::class.java)
             .exceptionHandling { exceptions ->
                 exceptions
                     .authenticationEntryPoint { _, response, _ ->

@@ -13,7 +13,7 @@ import java.security.MessageDigest
  * `/internal` 하위 경로는 gateway를 거치지 않는 서비스 간 호출이다. `X-Internal-Token`이 설정된 시크릿과 같을 때만
  * 서비스 권한([SERVICE_AUTHORITY])을 부여하고, 아니면 인증하지 않아 401이 된다.
  *
- * 이 경로에서는 `X-User-Id`를 신뢰하지 않는다(`GatewayHeaderAuthenticationFilter`가 건너뛴다).
+ * 이 경로에서는 사용자 토큰을 보지 않는다(`AccessTokenAuthenticationFilter`가 건너뛴다).
  * gateway 라우팅 표에 `/internal` prefix를 추가하면 안 된다. 라우팅에 없는 경로는 gateway가 404로
  * 막아 주므로, 이 경로가 외부에 닿지 않는 것은 그 덕분이다.
  */
