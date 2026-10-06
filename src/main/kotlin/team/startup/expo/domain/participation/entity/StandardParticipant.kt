@@ -42,6 +42,12 @@ class StandardParticipant(
     val applicationType: ApplicationType,
     @field:Column(name = "application_date", nullable = false)
     val applicationDate: LocalDateTime,
+    // 명찰 대상 판정과 출력에 쓴다. 신청 서비스가 폼에서 꺼내 넘기며 없으면 null이다
+    @field:Enumerated(EnumType.STRING)
+    @field:Column(length = 30)
+    val occupation: Occupation? = null,
+    @field:Column(length = 100)
+    val school: String? = null,
     smsTryTime: Int = 0,
 ) {
     @field:Column(name = "sms_try_time", nullable = false)
