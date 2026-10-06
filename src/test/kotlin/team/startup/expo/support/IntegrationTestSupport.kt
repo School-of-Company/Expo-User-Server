@@ -12,6 +12,7 @@ import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.postgresql.PostgreSQLContainer
+import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.util.Base64
 
@@ -50,14 +51,16 @@ abstract class IntegrationTestSupport {
             registry.add("jwt.private-key") { generatePrivateKeyPem() }
         }
 
+        /** 서비스가 서명한 토큰을 테스트에서 검증할 수 있도록 키쌍을 한 번만 만들어 공유한다. */
+        val testKeyPair: KeyPair by lazy {
+            KeyPairGenerator
+                .getInstance("RSA")
+                .apply { initialize(2048) }
+                .generateKeyPair()
+        }
+
         fun generatePrivateKeyPem(): String {
-            val key =
-                KeyPairGenerator
-                    .getInstance("RSA")
-                    .apply { initialize(2048) }
-                    .generateKeyPair()
-                    .private
-            val body = Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(key.encoded)
+            val body = Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(testKeyPair.private.encoded)
             return "-----BEGIN PRIVATE KEY-----\n$body\n-----END PRIVATE KEY-----"
         }
     }
