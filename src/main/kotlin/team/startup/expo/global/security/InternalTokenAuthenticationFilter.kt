@@ -6,6 +6,8 @@ import jakarta.servlet.http.HttpServletResponse
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
+import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.web.filter.OncePerRequestFilter
 import java.security.MessageDigest
 
@@ -22,7 +24,7 @@ class InternalTokenAuthenticationFilter(
 ) : OncePerRequestFilter() {
     private val expectedDigest = sha256(properties.token)
 
-    override fun shouldNotFilter(request: HttpServletRequest): Boolean = !request.requestURI.startsWith(INTERNAL_PATH_PREFIX)
+    override fun shouldNotFilter(request: HttpServletRequest): Boolean = !INTERNAL_PATH_MATCHER.matches(request)
 
     override fun doFilterInternal(
         request: HttpServletRequest,
@@ -41,7 +43,8 @@ class InternalTokenAuthenticationFilter(
     private fun sha256(value: String): ByteArray = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
 
     companion object {
-        const val INTERNAL_PATH_PREFIX = "/internal/"
+        /** 보안 규칙과 두 필터가 같은 판정을 쓴다. context path와 `/internal` 자체도 같은 기준으로 다룬다. */
+        val INTERNAL_PATH_MATCHER: RequestMatcher = PathPatternRequestMatcher.withDefaults().matcher("/internal/**")
         const val TOKEN_HEADER = "X-Internal-Token"
         const val SERVICE_AUTHORITY = "ROLE_SERVICE"
     }

@@ -25,7 +25,7 @@ class AccessTokenAuthenticationFilter(
     private val jwtProvider: JwtProvider,
 ) : OncePerRequestFilter() {
     override fun shouldNotFilter(request: HttpServletRequest): Boolean =
-        request.requestURI.startsWith(InternalTokenAuthenticationFilter.INTERNAL_PATH_PREFIX)
+        InternalTokenAuthenticationFilter.INTERNAL_PATH_MATCHER.matches(request)
 
     override fun doFilterInternal(
         request: HttpServletRequest,

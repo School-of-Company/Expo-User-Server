@@ -70,7 +70,7 @@ class SecurityConfig {
                     .hasAuthority(Authority.ROLE_ADMIN.name)
                     .requestMatchers(HttpMethod.DELETE, "/admin", "/admin/{admin_id}")
                     .hasAuthority(Authority.ROLE_ADMIN.name)
-                    .requestMatchers("/internal/**")
+                    .requestMatchers(InternalTokenAuthenticationFilter.INTERNAL_PATH_MATCHER)
                     .hasAuthority(InternalTokenAuthenticationFilter.SERVICE_AUTHORITY)
                     .anyRequest()
                     .denyAll()

@@ -2,6 +2,8 @@ package team.startup.expo.global.security.jwt
 
 import io.jsonwebtoken.JwtException
 import io.jsonwebtoken.Jwts
+import io.jsonwebtoken.security.SignatureException
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import team.startup.expo.domain.user.entity.Authority
 import java.security.KeyFactory
@@ -31,6 +33,7 @@ class JwtProvider(
 ) {
     private val privateKey: PrivateKey = parsePrivateKey(properties.privateKey)
     private val publicKey: PublicKey = derivePublicKey(privateKey)
+    private val log = LoggerFactory.getLogger(javaClass)
 
     fun generateAccessToken(
         adminId: Long,
@@ -62,7 +65,12 @@ class JwtProvider(
             jws.payload.subject
                 ?.toLongOrNull()
                 ?.takeIf { it > 0 && jws.header.algorithm == ALGORITHM }
+        } catch (e: SignatureException) {
+            // 키 교체 후 서명이 맞지 않는 경우를 운영에서 알아볼 수 있게 한다. 토큰 내용은 남기지 않는다
+            log.warn("access token signature verification failed")
+            null
         } catch (e: JwtException) {
+            // 만료와 형식 오류는 흔하므로 조용히 거절한다
             null
         } catch (e: IllegalArgumentException) {
             null
