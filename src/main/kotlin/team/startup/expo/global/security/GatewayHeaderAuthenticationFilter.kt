@@ -21,6 +21,10 @@ import team.startup.expo.domain.user.repository.AdminRepository
 class GatewayHeaderAuthenticationFilter(
     private val adminRepository: AdminRepository,
 ) : OncePerRequestFilter() {
+    // 서비스 간 호출은 gateway를 거치지 않으므로 이 경로에서는 X-User-Id를 신뢰하지 않는다
+    override fun shouldNotFilter(request: HttpServletRequest): Boolean =
+        request.requestURI.startsWith(InternalTokenAuthenticationFilter.INTERNAL_PATH_PREFIX)
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,

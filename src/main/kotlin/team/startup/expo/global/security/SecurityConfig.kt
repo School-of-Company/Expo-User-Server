@@ -33,6 +33,7 @@ class SecurityConfig {
         http: HttpSecurity,
         objectMapper: ObjectMapper,
         adminRepository: AdminRepository,
+        internalProperties: InternalProperties,
     ): SecurityFilterChain {
         http
             .csrf { it.disable() }
@@ -41,6 +42,7 @@ class SecurityConfig {
             .httpBasic { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .addFilterBefore(GatewayHeaderAuthenticationFilter(adminRepository), UsernamePasswordAuthenticationFilter::class.java)
+            .addFilterBefore(InternalTokenAuthenticationFilter(internalProperties), UsernamePasswordAuthenticationFilter::class.java)
             .exceptionHandling { exceptions ->
                 exceptions
                     .authenticationEntryPoint { _, response, _ ->
@@ -64,6 +66,8 @@ class SecurityConfig {
                     .hasAuthority(Authority.ROLE_ADMIN.name)
                     .requestMatchers(HttpMethod.DELETE, "/admin", "/admin/{admin_id}")
                     .hasAuthority(Authority.ROLE_ADMIN.name)
+                    .requestMatchers("/internal/**")
+                    .hasAuthority(InternalTokenAuthenticationFilter.SERVICE_AUTHORITY)
                     .anyRequest()
                     .denyAll()
             }
