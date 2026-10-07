@@ -46,12 +46,15 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
         rows.map { it["code"] as String }.toSet().size shouldBe 3
         rows.all { (it["code"] as String).length == 22 } shouldBe true
 
-        val event = registeredEvents().single()
-        event.path("id").asLong() shouldBe representative["id"]
-        event.path("representativeId").asLong() shouldBe representative["id"]
-        event.path("phoneNumber").asString() shouldBe PHONE
-        event.path("participants").map { it.path("id").asLong() } shouldBe rows.map { it["id"] }
-        event.path("participants").map { it.path("code").asString() } shouldBe rows.map { it["code"] }
+        val outbox =
+            jdbcTemplate.queryForMap(
+                "SELECT participant_id, phone_number FROM tb_registration_outbox WHERE event_type = 'REGISTERED'",
+            )
+        outbox["participant_id"] shouldBe representative["id"]
+        outbox["phone_number"] shouldBe PHONE
+        val participants = registeredParticipants().single()
+        participants.map { it.path("id").asLong() } shouldBe rows.map { it["id"] }
+        participants.map { it.path("code").asString() } shouldBe rows.map { it["code"] }
         count("tb_registration_outbox WHERE event_type = 'STANDARD_CREATED'") shouldBe 3
     }
 
@@ -62,12 +65,12 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
 
         register(ALICE, BOB).andExpect(status().isOk)
 
-        count("tb_standard_participant") shouldBe 3
+        count("tb_standard_participant") shouldBe 2
         codes() shouldBe codes
-        val events = registeredEvents()
+        val events = registeredParticipants()
         events.size shouldBe 2
-        events.last().path("participants").map { it.path("code").asString() } shouldBe codes
-        count("tb_registration_outbox WHERE event_type = 'STANDARD_CREATED'") shouldBe 3
+        events.last().map { it.path("code").asString() } shouldBe codes
+        count("tb_registration_outbox WHERE event_type = 'STANDARD_CREATED'") shouldBe 2
     }
 
     @Test
@@ -77,10 +80,10 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
 
         register(ALICE, BOB).andExpect(status().isCreated)
 
-        count("tb_standard_participant") shouldBe 3
-        codes().take(2) shouldBe before
+        count("tb_standard_participant") shouldBe 2
+        codes().take(1) shouldBe before
         val added = jdbcTemplate.queryForMap("SELECT id, code FROM tb_standard_participant WHERE name = '${BOB.name}'")
-        val participants = registeredEvents().last().path("participants")
+        val participants = registeredParticipants().last()
         participants.size() shouldBe 1
         participants[0].path("id").asLong() shouldBe added["id"]
         participants[0].path("code").asString() shouldBe added["code"]
@@ -122,8 +125,8 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
 
         register(ALICE, BOB, requestId = requestId).andExpect(status().isCreated)
 
-        count("tb_standard_participant") shouldBe 3
-        registeredEvents().size shouldBe 1
+        count("tb_standard_participant") shouldBe 2
+        registeredParticipants().size shouldBe 1
     }
 
     @Test
@@ -234,7 +237,8 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
 
     private fun codes() = jdbcTemplate.queryForList("SELECT code FROM tb_standard_participant ORDER BY id", String::class.java)
 
-    private fun registeredEvents() =
+    /** 등록 완료 이벤트마다 문자에 담은 참가자 `[{id, code}]` 배열을 등록 순서대로 돌려준다. */
+    private fun registeredParticipants() =
         jdbcTemplate
             .queryForList(
                 "SELECT participants_json FROM tb_registration_outbox WHERE event_type = 'REGISTERED' ORDER BY id",
