@@ -14,6 +14,7 @@ import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.util.ConstraintViolations
 import team.startup.expo.global.util.InformationJson
 import team.startup.expo.global.util.PhoneNumbers
+import team.startup.expo.global.util.QuestionSnapshot
 import java.time.LocalDateTime
 
 /**
@@ -31,6 +32,7 @@ class CreateStandardParticipantServiceImpl(
     @Transactional
     override fun execute(reqDto: CreateStandardParticipantReqDto): CreateStandardParticipantResDto {
         InformationJson.requireValid(reqDto.informationJson)
+        QuestionSnapshot.errorOf(reqDto.questions)?.let { throw ExpectedException(HttpStatus.BAD_REQUEST, it) }
         val digits = PhoneNumbers.digitsOnly(reqDto.phoneNumber)
         // 표기만 다른 같은 번호의 동시 등록도 하나씩 처리해야 아래 확인이 앞선 요청의 저장을 볼 수 있다
         registrationLock.lockPhone(reqDto.expoId, digits)
@@ -60,6 +62,8 @@ class CreateStandardParticipantServiceImpl(
                         applicationDate = LocalDateTime.now(),
                         occupation = reqDto.occupation,
                         school = reqDto.school,
+                        informationFormId = reqDto.formId,
+                        informationQuestions = QuestionSnapshot.serialize(reqDto.questions),
                     ),
                 )
             } catch (exception: DataIntegrityViolationException) {

@@ -80,6 +80,41 @@ class ParticipantDetailApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `제출 당시 문항 스냅샷이 있으면 questions로 돌려주고 없는 행은 null이다`() {
+        val withSnapshot = standard(EXPO, "01000000001", "스냅샷있음", info = """{"이름":"홍길동"}""")
+        val without = standard(EXPO, "01000000002", "스냅샷없음", info = """{"이름":"김영희"}""")
+        informationSnapshot("tb_standard_participant", withSnapshot, SNAPSHOT)
+        surveyAnswer(withSnapshot, "11111111-0000-4000-8000-000000000001", """{"1":"a"}""", SNAPSHOT)
+        surveyAnswer(without, "11111111-0000-4000-8000-000000000001", """{"1":"b"}""")
+
+        standardDetails(EXPO)
+            .andExpect(jsonPath("$.items[0].participantId").value(withSnapshot))
+            .andExpect(jsonPath("$.items[0].information.answers.이름").value("홍길동"))
+            .andExpect(jsonPath("$.items[0].information.questions[0].title").value("이름"))
+            .andExpect(jsonPath("$.items[0].information.questions[0].id").value("1"))
+            .andExpect(jsonPath("$.items[0].surveyAnswer.questions[0].title").value("이름"))
+            .andExpect(jsonPath("$.items[1].participantId").value(without))
+            .andExpect(jsonPath("$.items[1].information.questions").value(nullValue()))
+            .andExpect(jsonPath("$.items[1].surveyAnswer.answers.1").value("b"))
+            .andExpect(jsonPath("$.items[1].surveyAnswer.questions").value(nullValue()))
+    }
+
+    @Test
+    fun `연수자도 제출 당시 문항 스냅샷을 돌려준다`() {
+        val withSnapshot = trainee(EXPO, "01011110001", "T-1", "스냅샷있음", info = """{"소속":"빛고을초"}""")
+        trainee(EXPO, "01011110002", "T-2", "스냅샷없음")
+        informationSnapshot("tb_trainee", withSnapshot, SNAPSHOT)
+
+        traineeDetails(EXPO)
+            .andExpect(jsonPath("$.items[0].information.questions[0].title").value("이름"))
+            .andExpect(jsonPath("$.items[1].information.questions").value(nullValue()))
+        mockMvc
+            .perform(get("/internal/trainees/$withSnapshot/details").header("X-Internal-Token", INTERNAL_TOKEN))
+            .andExpect(jsonPath("$.information.answers.소속").value("빛고을초"))
+            .andExpect(jsonPath("$.information.questions[0].title").value("이름"))
+    }
+
+    @Test
     fun `페이지 경계에서 nextCursor로 이어 읽고 마지막 페이지는 null이다`() {
         val ids = (1..5).map { standard(EXPO, "0100000000$it", "참가자$it") }
 
@@ -320,18 +355,34 @@ class ParticipantDetailApiTests : IntegrationTestSupport() {
         participantId: Long,
         surveyId: String,
         answerJson: String,
+        questions: String? = null,
     ) {
         jdbcTemplate.update(
             "INSERT INTO tb_standard_participant_survey_answer " +
-                "(survey_id, standard_participant_id, answer_json, personal_information_status) VALUES (?, ?, ?::jsonb, true)",
+                "(survey_id, standard_participant_id, answer_json, personal_information_status, answer_questions) " +
+                "VALUES (?, ?, ?::jsonb, true, ?::jsonb)",
             surveyId,
             participantId,
             answerJson,
+            questions,
+        )
+    }
+
+    private fun informationSnapshot(
+        table: String,
+        id: Long,
+        questions: String,
+    ) {
+        jdbcTemplate.update(
+            "UPDATE $table SET information_form_id = 'form-1', information_questions = ?::jsonb WHERE id = ?",
+            questions,
+            id,
         )
     }
 
     private companion object {
         const val EXPO = "0199aaaa-0000-7000-8000-0000000000d1"
         const val OTHER_EXPO = "0199aaaa-0000-7000-8000-0000000000d2"
+        const val SNAPSHOT = """[{"id":"1","title":"이름","order":0}]"""
     }
 }

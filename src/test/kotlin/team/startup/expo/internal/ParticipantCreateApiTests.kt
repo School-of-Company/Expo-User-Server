@@ -121,6 +121,57 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `제출 당시 폼 스냅샷을 formId와 함께 저장하고 없으면 null이다`() {
+        createStandard(phone = PHONE, formId = FORM_ID, questions = QUESTIONS).andExpect(status().isCreated)
+        createStandard(phone = "01099998888").andExpect(status().isCreated)
+
+        val withSnapshot = jdbcTemplate.queryForMap("SELECT * FROM tb_standard_participant WHERE phone_number = ?", PHONE)
+        withSnapshot["information_form_id"] shouldBe FORM_ID
+        firstQuestionTitle("tb_standard_participant WHERE phone_number = '$PHONE'") shouldBe "이름"
+        // information_json(문항 제목 키 답변)은 그대로이고 스냅샷은 별도 컬럼이다
+        jdbcTemplate.queryForObject(
+            "SELECT information_json ->> '1' FROM tb_standard_participant WHERE phone_number = '$PHONE'",
+            String::class.java,
+        ) shouldBe
+            "a"
+        val without = jdbcTemplate.queryForMap("SELECT * FROM tb_standard_participant WHERE phone_number = ?", "01099998888")
+        without["information_form_id"] shouldBe null
+        without["information_questions"] shouldBe null
+    }
+
+    @Test
+    fun `이미 있는 일반 참가자를 재사용할 때는 스냅샷을 덮어쓰지 않는다`() {
+        createStandard(phone = PHONE, formId = FORM_ID, questions = QUESTIONS).andExpect(status().isCreated)
+
+        createStandard(phone = PHONE, formId = "다른폼", questions = """[{"id":"9","title":"바뀜"}]""").andExpect(status().isOk)
+
+        jdbcTemplate.queryForObject("SELECT information_form_id FROM tb_standard_participant", String::class.java) shouldBe FORM_ID
+        jdbcTemplate.queryForObject(
+            "SELECT information_questions -> 0 ->> 'title' FROM tb_standard_participant",
+            String::class.java,
+        ) shouldBe
+            "이름"
+    }
+
+    @Test
+    fun `questions가 배열이 아니거나 객체가 아닌 문항이 있으면 400이고 저장하지 않는다`() {
+        createStandard(phone = PHONE, questions = """{"id":"1","title":"이름"}""").andExpect(status().isBadRequest)
+        createStandard(phone = PHONE, questions = """["이름"]""").andExpect(status().isBadRequest)
+        createTrainee(training = "T-1", phone = PHONE, questions = """{"id":"1"}""").andExpect(status().isBadRequest)
+
+        count("tb_standard_participant") shouldBe 0
+        count("tb_trainee") shouldBe 0
+    }
+
+    @Test
+    fun `연수자도 제출 당시 폼 스냅샷을 저장한다`() {
+        createTrainee(training = "T-1", phone = PHONE, formId = FORM_ID, questions = QUESTIONS).andExpect(status().isCreated)
+
+        formIdOf("tb_trainee") shouldBe FORM_ID
+        firstQuestionTitle("tb_trainee") shouldBe "이름"
+    }
+
+    @Test
     fun `삭제 중이거나 삭제된 박람회에는 만들 수 없고 409이다`() {
         jdbcTemplate.update("INSERT INTO tb_expo_deletion (expo_id, started_at) VALUES (?, now())", EXPO)
 
@@ -389,7 +440,9 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
         informationJson: String? = "{\"1\":\"a\"}",
         occupation: String? = null,
         school: String? = null,
-    ) = post("/internal/standard-participants", standardBody(phone, expoId, name, informationJson, occupation, school))
+        formId: String? = null,
+        questions: String? = null,
+    ) = post("/internal/standard-participants", standardBody(phone, expoId, name, informationJson, occupation, school, formId, questions))
 
     private fun createTrainee(
         training: String,
@@ -397,7 +450,9 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
         applicationType: String = "PRE",
         informationJson: String? = "{\"1\":\"a\"}",
         school: String? = null,
-    ) = post("/internal/trainees", traineeBody(training, phone, applicationType, informationJson, school))
+        formId: String? = null,
+        questions: String? = null,
+    ) = post("/internal/trainees", traineeBody(training, phone, applicationType, informationJson, school, formId, questions))
 
     private fun smsTry(
         type: String,
@@ -418,6 +473,12 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
             .substringBefore(',')
             .toLong()
 
+    private fun formIdOf(table: String) = jdbcTemplate.queryForObject("SELECT information_form_id FROM $table", String::class.java)
+
+    /** [from]은 `FROM` 뒤의 테이블과 조건이다. */
+    private fun firstQuestionTitle(from: String) =
+        jdbcTemplate.queryForObject("SELECT information_questions -> 0 ->> 'title' FROM $from", String::class.java)
+
     private fun count(table: String) = jdbcTemplate.queryForObject("SELECT count(*) FROM $table", Long::class.java)
 
     private fun standardBody(
@@ -427,8 +488,11 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
         informationJson: String? = "{\"1\":\"a\"}",
         occupation: String? = null,
         school: String? = null,
+        formId: String? = null,
+        questions: String? = null,
     ) = """{"expoId":"$expoId","name":"$name","phoneNumber":"$phone","informationJson":${json(informationJson)},""" +
-        """"personalInformationStatus":true,"applicationType":"PRE","occupation":${json(occupation)},"school":${json(school)}}"""
+        """"personalInformationStatus":true,"applicationType":"PRE","occupation":${json(occupation)},"school":${json(school)},""" +
+        """"formId":${json(formId)},"questions":${questions ?: "null"}}"""
 
     private fun traineeBody(
         training: String,
@@ -436,8 +500,11 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
         applicationType: String = "PRE",
         informationJson: String? = "{\"1\":\"a\"}",
         school: String? = null,
+        formId: String? = null,
+        questions: String? = null,
     ) = """{"expoId":"$EXPO","trainingId":"$training","name":"연수자","phoneNumber":"$phone","informationJson":${json(informationJson)},""" +
-        """"personalInformationStatus":true,"applicationType":"$applicationType","school":${json(school)}}"""
+        """"personalInformationStatus":true,"applicationType":"$applicationType","school":${json(school)},""" +
+        """"formId":${json(formId)},"questions":${questions ?: "null"}}"""
 
     private fun smsTryBody(
         type: String,
@@ -453,6 +520,8 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
         const val EXPO = "0199aaaa-0000-7000-8000-0000000000a1"
         const val OTHER_EXPO = "0199aaaa-0000-7000-8000-0000000000a2"
         const val PHONE = "01012345678"
+        const val FORM_ID = "0199aaaa-0000-7000-8000-0000000000f1"
+        const val QUESTIONS = """[{"id":"1","title":"이름","order":0}]"""
         const val THREADS = 8
     }
 }

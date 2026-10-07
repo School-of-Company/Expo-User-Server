@@ -42,7 +42,7 @@ class GetStandardParticipantDetailsServiceImpl(
         val surveyAnswers =
             surveyAnswerRepository
                 .findAnswersByParticipantIds(participants.map { it.id!! })
-                .associate { it.participantId to it.answerJson }
+                .associateBy { it.participantId }
 
         val items =
             participants.map {
@@ -52,8 +52,18 @@ class GetStandardParticipantDetailsServiceImpl(
                     phoneNumber = it.phoneNumber,
                     personalInformationStatus = it.personalInformationStatus,
                     applicationType = it.applicationType,
-                    information = InformationResDto(answers = InformationJson.toNode(it.informationJson)),
-                    surveyAnswer = surveyAnswers[it.id]?.let { json -> InformationResDto(answers = InformationJson.toNode(json)) },
+                    information =
+                        InformationResDto(
+                            answers = InformationJson.toNode(it.informationJson),
+                            questions = InformationJson.toQuestionsNode(it.informationQuestions),
+                        ),
+                    surveyAnswer =
+                        surveyAnswers[it.id]?.let { answer ->
+                            InformationResDto(
+                                answers = InformationJson.toNode(answer.answerJson),
+                                questions = InformationJson.toQuestionsNode(answer.answerQuestions),
+                            )
+                        },
                 )
             }
         return DetailPageResDto(items = items, nextCursor = if (hasNext) items.last().participantId else null)

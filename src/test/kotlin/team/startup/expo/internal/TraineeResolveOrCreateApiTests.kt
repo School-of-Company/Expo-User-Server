@@ -172,6 +172,21 @@ class TraineeResolveOrCreateApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `제출 당시 폼 스냅샷은 만들 때만 저장하고 재사용할 때는 바꾸지 않는다`() {
+        resolveOrCreate(trainingId = "T-1", phone = PHONE, formId = FORM_ID, questions = QUESTIONS)
+            .andExpect(jsonPath("$.created").value(true))
+        resolveOrCreate(trainingId = "T-1", phone = PHONE, formId = "다른폼", questions = CHANGED_QUESTIONS)
+            .andExpect(jsonPath("$.created").value(false))
+
+        snapshotOf("phone_number = '$PHONE'", "information_form_id") shouldBe FORM_ID
+        snapshotOf("phone_number = '$PHONE'", "information_questions -> 0 ->> 'title'") shouldBe "이름"
+
+        resolveOrCreate(trainingId = "T-2", phone = OTHER_PHONE).andExpect(jsonPath("$.created").value(true))
+        snapshotOf("phone_number = '$OTHER_PHONE'", "information_questions") shouldBe null
+        resolveOrCreate(trainingId = "T-3", phone = "01077776666", questions = """{"id":"1"}""").andExpect(status().isBadRequest)
+    }
+
+    @Test
     fun `삭제 기록이 있는 박람회는 기존 연수자도 돌려주지 않고 409이다`() {
         resolveOrCreate(trainingId = "T-1", phone = PHONE).andExpect(jsonPath("$.created").value(true))
         jdbcTemplate.update("INSERT INTO tb_expo_deletion (expo_id, started_at) VALUES (?, now())", EXPO)
@@ -241,7 +256,9 @@ class TraineeResolveOrCreateApiTests : IntegrationTestSupport() {
         informationJson: String? = "{\"1\":\"a\"}",
         personalInformationStatus: Boolean = true,
         school: String? = null,
-    ): ResultActions = send(body(expoId, trainingId, phone, name, informationJson, personalInformationStatus, school))
+        formId: String? = null,
+        questions: String? = null,
+    ): ResultActions = send(body(expoId, trainingId, phone, name, informationJson, personalInformationStatus, school, formId, questions))
 
     private fun send(body: String): ResultActions =
         mockMvc.perform(post(PATH).header("X-Internal-Token", INTERNAL_TOKEN).contentType(MediaType.APPLICATION_JSON).content(body))
@@ -254,11 +271,14 @@ class TraineeResolveOrCreateApiTests : IntegrationTestSupport() {
         informationJson: String?,
         personalInformationStatus: Boolean,
         school: String? = null,
+        formId: String? = null,
+        questions: String? = null,
     ): String {
         val info = json(informationJson)
         val schoolJson = json(school)
         return """{"expoId":"$expoId","trainingId":"$trainingId","name":"$name","phoneNumber":"$phone","informationJson":$info,""" +
-            """"personalInformationStatus":$personalInformationStatus,"school":$schoolJson}"""
+            """"personalInformationStatus":$personalInformationStatus,"school":$schoolJson,""" +
+            """"formId":${json(formId)},"questions":${questions ?: "null"}}"""
     }
 
     private fun json(value: String?) = if (value == null) "null" else "\"" + value.replace("\"", "\\\"") + "\""
@@ -269,6 +289,11 @@ class TraineeResolveOrCreateApiTests : IntegrationTestSupport() {
             .substringBefore(',')
             .toLong()
 
+    private fun snapshotOf(
+        where: String,
+        expression: String,
+    ) = jdbcTemplate.queryForObject("SELECT $expression FROM tb_trainee WHERE $where", String::class.java)
+
     private fun count() = jdbcTemplate.queryForObject("SELECT count(*) FROM tb_trainee", Long::class.java)
 
     private companion object {
@@ -276,6 +301,10 @@ class TraineeResolveOrCreateApiTests : IntegrationTestSupport() {
         const val EXPO = "0199aaaa-0000-7000-8000-0000000000c1"
         const val OTHER_EXPO = "0199aaaa-0000-7000-8000-0000000000c2"
         const val PHONE = "01012345678"
+        const val FORM_ID = "0199aaaa-0000-7000-8000-0000000000f1"
+        const val QUESTIONS = """[{"id":"1","title":"이름","order":0}]"""
+        const val CHANGED_QUESTIONS = """[{"id":"9","title":"바뀜"}]"""
+        const val OTHER_PHONE = "01099998888"
         const val THREADS = 8
         const val BLOCK_CHECK_MILLIS = 500L
     }

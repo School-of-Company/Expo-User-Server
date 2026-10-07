@@ -10,6 +10,7 @@ import team.startup.expo.domain.participation.presentation.dto.response.SurveyAn
 import team.startup.expo.domain.participation.service.SaveSurveyAnswerService
 import team.startup.expo.global.kafka.MalformedSurveyAnswerEventException
 import team.startup.expo.global.kafka.SurveyAnswerProperties
+import team.startup.expo.global.util.QuestionSnapshot
 import tools.jackson.databind.json.JsonMapper
 import java.util.concurrent.TimeUnit
 
@@ -51,7 +52,7 @@ class SurveyAnswerEventConsumer(
             } catch (e: Exception) {
                 throw MalformedSurveyAnswerEventException("이벤트를 해석할 수 없습니다.", e)
             }
-        if (event.version != SUPPORTED_VERSION) {
+        if (event.version !in SUPPORTED_VERSIONS) {
             throw MalformedSurveyAnswerEventException("지원하지 않는 이벤트 버전입니다: ${event.version}")
         }
         if (event.eventId.isBlank() || event.eventId.length > ID_MAX_LENGTH ||
@@ -60,6 +61,7 @@ class SurveyAnswerEventConsumer(
         ) {
             throw MalformedSurveyAnswerEventException("식별자가 올바르지 않습니다.")
         }
+        QuestionSnapshot.errorOf(event.questions)?.let { throw MalformedSurveyAnswerEventException(it) }
         // jsonb 컬럼에 넣기 전에 걸러 낸다. 저장 단계에서 실패하면 재시도만 반복하게 된다
         try {
             jsonMapper.readTree(event.answerJson)
@@ -76,7 +78,8 @@ class SurveyAnswerEventConsumer(
     }
 
     private companion object {
-        const val SUPPORTED_VERSION = 1
+        // Form보다 먼저 배포해 v1과 v2를 모두 받는다. v2는 문항 스냅샷이 더해진 것이다
+        val SUPPORTED_VERSIONS = setOf(1, 2)
         const val ID_MAX_LENGTH = 36
         const val SEND_TIMEOUT_SECONDS = 10L
     }
