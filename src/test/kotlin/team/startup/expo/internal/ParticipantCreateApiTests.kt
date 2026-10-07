@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import team.startup.expo.support.IntegrationTestSupport
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -348,6 +349,61 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
         smsTry("TRAINEE", PHONE).andExpect(status().isBadRequest)
     }
 
+    @Test
+    fun `같은 eventId로 다시 불러도 횟수는 한 번만 올라가고 204이다`() {
+        createStandard(phone = PHONE).andExpect(status().isCreated)
+        val eventId = UUID.randomUUID().toString()
+
+        repeat(3) { smsTry("STANDARD", PHONE, eventId = eventId).andExpect(status().isNoContent) }
+
+        jdbcTemplate.queryForObject("SELECT sms_try_time FROM tb_standard_participant", Int::class.java) shouldBe 1
+        count("tb_sms_try_event") shouldBe 1
+    }
+
+    @Test
+    fun `같은 eventId를 동시에 불러도 횟수는 한 번만 올라간다`() {
+        createStandard(phone = PHONE).andExpect(status().isCreated)
+        val eventId = UUID.randomUUID().toString()
+
+        val statuses = concurrently { smsTry("STANDARD", PHONE, eventId = eventId).andReturn().response.status }
+
+        statuses.all { it == 204 } shouldBe true
+        jdbcTemplate.queryForObject("SELECT sms_try_time FROM tb_standard_participant", Int::class.java) shouldBe 1
+    }
+
+    @Test
+    fun `다른 참가자에 쓴 eventId는 409이고 횟수를 올리지 않는다`() {
+        createStandard(phone = PHONE).andExpect(status().isCreated)
+        createStandard(phone = "01099998888").andExpect(status().isCreated)
+        val eventId = UUID.randomUUID().toString()
+        smsTry("STANDARD", PHONE, eventId = eventId).andExpect(status().isNoContent)
+
+        smsTry("STANDARD", "01099998888", eventId = eventId).andExpect(status().isConflict)
+
+        jdbcTemplate.queryForObject("SELECT sum(sms_try_time) FROM tb_standard_participant", Int::class.java) shouldBe 1
+    }
+
+    @Test
+    fun `eventId가 비어 있으면 400이다`() {
+        createStandard(phone = PHONE).andExpect(status().isCreated)
+
+        smsTry("STANDARD", PHONE, eventId = "").andExpect(status().isBadRequest)
+
+        jdbcTemplate.queryForObject("SELECT sms_try_time FROM tb_standard_participant", Int::class.java) shouldBe 0
+    }
+
+    @Test
+    fun `eventId가 없으면 전환 기간 동안 기존처럼 호출마다 올리고 기록은 남기지 않는다`() {
+        createStandard(phone = PHONE).andExpect(status().isCreated)
+        val body = """{"expoId":"$EXPO","participationType":"STANDARD","phoneNumber":"$PHONE"}"""
+
+        post("/internal/participants/sms-try", body).andExpect(status().isNoContent)
+        post("/internal/participants/sms-try", body).andExpect(status().isNoContent)
+
+        jdbcTemplate.queryForObject("SELECT sms_try_time FROM tb_standard_participant", Int::class.java) shouldBe 2
+        count("tb_sms_try_event") shouldBe 0
+    }
+
     // --- 인증
 
     @Test
@@ -412,7 +468,8 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
         type: String,
         phone: String,
         expoId: String = EXPO,
-    ) = post("/internal/participants/sms-try", smsTryBody(type, phone, expoId))
+        eventId: String = UUID.randomUUID().toString(),
+    ) = post("/internal/participants/sms-try", smsTryBody(type, phone, expoId, eventId))
 
     private fun post(
         path: String,
@@ -463,7 +520,8 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
         type: String,
         phone: String,
         expoId: String,
-    ) = """{"expoId":"$expoId","participationType":"$type","phoneNumber":"$phone"}"""
+        eventId: String = UUID.randomUUID().toString(),
+    ) = """{"expoId":"$expoId","participationType":"$type","phoneNumber":"$phone","eventId":"$eventId"}"""
 
     // 문자열 값은 따옴표로 감싸고 null은 null로 쓴다
     private fun json(value: String?) = if (value == null) "null" else "\"" + value.replace("\"", "\\\"") + "\""

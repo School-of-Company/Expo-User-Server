@@ -23,11 +23,11 @@ import team.startup.expo.domain.participation.presentation.dto.response.RecordEn
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveStandardParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantNameResDto
-import team.startup.expo.domain.participation.service.CreateStandardParticipantService
 import team.startup.expo.domain.participation.service.GetStandardParticipantNamesService
 import team.startup.expo.domain.participation.service.GetSurveyAnswerEventService
 import team.startup.expo.domain.participation.service.IncreaseSmsTryTimeService
 import team.startup.expo.domain.participation.service.RecordEntryService
+import team.startup.expo.domain.participation.service.RegisterStandardParticipantService
 import team.startup.expo.domain.participation.service.ResolveParticipantService
 import team.startup.expo.domain.participation.service.ResolveStandardParticipantService
 
@@ -42,7 +42,7 @@ class InternalParticipantController(
     private val resolveParticipantService: ResolveParticipantService,
     private val getStandardParticipantNamesService: GetStandardParticipantNamesService,
     private val getSurveyAnswerEventService: GetSurveyAnswerEventService,
-    private val createStandardParticipantService: CreateStandardParticipantService,
+    private val registerStandardParticipantService: RegisterStandardParticipantService,
     private val increaseSmsTryTimeService: IncreaseSmsTryTimeService,
     private val recordEntryService: RecordEntryService,
 ) {
@@ -72,17 +72,24 @@ class InternalParticipantController(
 
     @Operation(
         summary = "일반 참가자 등록",
-        description = "새로 만들면 201, 같은 번호가 이미 있고 QR 문자를 두 번 미만 보냈으면 기존 참가자로 200, 두 번 이상 보냈으면 409입니다.",
+        description =
+            "새로 만들면 201, 같은 번호가 이미 있고 QR 문자를 두 번 미만 보냈으면 기존 참가자로 200, 두 번 이상 보냈으면 409입니다. " +
+                "같은 requestId의 재시도는 처음의 결과를 그대로 돌려주고, 다른 내용에 쓰면 409입니다.",
     )
     @PostMapping("/standard-participants")
     fun createStandardParticipant(
         @Valid @RequestBody reqDto: CreateStandardParticipantReqDto,
     ): ResponseEntity<CreateStandardParticipantResDto> {
-        val result = createStandardParticipantService.execute(reqDto)
+        val result = registerStandardParticipantService.execute(reqDto)
         return ResponseEntity.status(if (result.created) HttpStatus.CREATED else HttpStatus.OK).body(result)
     }
 
-    @Operation(summary = "QR 문자 발송 횟수 증가", description = "QR 문자를 보낸 뒤 일반 참가자의 발송 횟수를 1 올립니다. 참가자가 없으면 404, 연수자는 400입니다.")
+    @Operation(
+        summary = "QR 문자 발송 횟수 증가",
+        description =
+            "QR 문자를 보낸 뒤 일반 참가자의 발송 횟수를 1 올립니다. eventId가 있으면 같은 값은 한 번만 올리며 다시 불러도 204입니다. " +
+                "참가자가 없으면 404, 연수자는 400, eventId를 다른 참가자에 썼으면 409입니다.",
+    )
     @PostMapping("/participants/sms-try")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun increaseSmsTryTime(

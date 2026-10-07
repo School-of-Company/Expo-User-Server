@@ -34,4 +34,7 @@ data class CreateTraineeReqDto(
      * 해석 없이 보존하며, 없으면 스냅샷 없이 저장된다. 배열이 아니면 400이다.
      */
     val questions: JsonNode? = null,
+    // Application의 `Idempotency-Key`. 같은 등록의 재시도에는 같은 값을 보낸다. 없으면 멱등 처리 없이 등록한다
+    @field:Size(min = 1, max = 100)
+    val requestId: String? = null,
 )

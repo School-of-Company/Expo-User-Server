@@ -62,7 +62,7 @@ class UserPersistenceTests {
         jdbcTemplate.execute(
             "TRUNCATE TABLE tb_trainee_survey_answer, tb_standard_participant_survey_answer, " +
                 "tb_trainee_participation, tb_standard_participant_participation, " +
-                "tb_trainee, tb_standard_participant, tb_admin RESTART IDENTITY",
+                "tb_trainee, tb_standard_participant, tb_admin RESTART IDENTITY CASCADE",
         )
     }
 
