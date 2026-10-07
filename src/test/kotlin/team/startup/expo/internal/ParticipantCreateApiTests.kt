@@ -172,24 +172,27 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `공식 6개 유형을 모두 받고 옛 값은 400이다`() {
+    fun `직업 9개를 모두 받고 합쳐서 쓰던 옛 값과 모르는 값은 400이다`() {
         listOf(
             "KINDERGARTEN_STUDENT",
             "ELEMENTARY_STUDENT",
-            "MIDDLE_HIGH_SCHOOL_STUDENT",
+            "MIDDLE_SCHOOL_STUDENT",
+            "HIGH_SCHOOL_STUDENT",
+            "SCHOOL_STAFF",
+            "PARENT",
             "GENERAL",
             "TEACHER",
             "PRE_SERVICE_TEACHER",
         ).forEachIndexed { index, occupation ->
             createStandard(phone = "0101000000$index", occupation = occupation).andExpect(status().isCreated)
         }
-        count("tb_standard_participant") shouldBe 6L
+        count("tb_standard_participant") shouldBe 9L
 
-        // 공식 유형에서 빠진 옛 값은 받지 않는다
-        listOf("MIDDLE_SCHOOL_STUDENT", "HIGH_SCHOOL_STUDENT", "SCHOOL_STAFF", "PARENT").forEachIndexed { index, occupation ->
+        // 중·고를 합친 옛 값(V13 이전)과 목록에 없는 값은 받지 않는다
+        listOf("MIDDLE_HIGH_SCHOOL_STUDENT", "STUDENT").forEachIndexed { index, occupation ->
             createStandard(phone = "0102000000$index", occupation = occupation).andExpect(status().isBadRequest)
         }
-        count("tb_standard_participant") shouldBe 6L
+        count("tb_standard_participant") shouldBe 9L
     }
 
     @Test
