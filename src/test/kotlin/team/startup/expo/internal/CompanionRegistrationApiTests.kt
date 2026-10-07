@@ -84,7 +84,7 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
         codes().take(1) shouldBe before
         val added = jdbcTemplate.queryForMap("SELECT id, code FROM tb_standard_participant WHERE name = '${BOB.name}'")
         val participants = registeredParticipants().last()
-        participants.size() shouldBe 1
+        participants.size shouldBe 1
         participants[0].path("id").asLong() shouldBe added["id"]
         participants[0].path("code").asString() shouldBe added["code"]
     }
@@ -243,7 +243,7 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
             .queryForList(
                 "SELECT participants_json FROM tb_registration_outbox WHERE event_type = 'REGISTERED' ORDER BY id",
                 String::class.java,
-            ).map { mapper.readTree(it) }
+            ).map { mapper.readTree(it).toList() }
 
     private fun count(from: String) = jdbcTemplate.queryForObject("SELECT count(*) FROM $from", Long::class.java)
 
