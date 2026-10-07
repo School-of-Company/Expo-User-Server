@@ -10,12 +10,15 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import team.startup.expo.domain.training.presentation.dto.request.CreateTraineeReqDto
 import team.startup.expo.domain.training.presentation.dto.request.GetTraineeNamesReqDto
+import team.startup.expo.domain.training.presentation.dto.request.ResolveOrCreateTraineeReqDto
 import team.startup.expo.domain.training.presentation.dto.request.ResolveTraineeReqDto
 import team.startup.expo.domain.training.presentation.dto.response.CreateTraineeResDto
+import team.startup.expo.domain.training.presentation.dto.response.ResolveOrCreateTraineeResDto
 import team.startup.expo.domain.training.presentation.dto.response.ResolveTraineeResDto
 import team.startup.expo.domain.training.presentation.dto.response.TraineeNameResDto
 import team.startup.expo.domain.training.service.CreateTraineeService
 import team.startup.expo.domain.training.service.GetTraineeNamesService
+import team.startup.expo.domain.training.service.ResolveOrCreateTraineeService
 import team.startup.expo.domain.training.service.ResolveTraineeService
 
 /**
@@ -28,6 +31,7 @@ class InternalTraineeController(
     private val resolveTraineeService: ResolveTraineeService,
     private val getTraineeNamesService: GetTraineeNamesService,
     private val createTraineeService: CreateTraineeService,
+    private val resolveOrCreateTraineeService: ResolveOrCreateTraineeService,
 ) {
     @Operation(summary = "연수자 id 조회", description = "박람회 id와 연수 번호로 연수자 id를 찾습니다. 없으면 404, 같은 번호의 연수자가 여럿이면 409입니다.")
     @PostMapping("/resolve")
@@ -50,4 +54,13 @@ class InternalTraineeController(
     fun createTrainee(
         @Valid @RequestBody reqDto: CreateTraineeReqDto,
     ): CreateTraineeResDto = createTraineeService.execute(reqDto)
+
+    @Operation(
+        summary = "연수자 조회 또는 생성",
+        description = "박람회 id와 전화번호로 연수자를 찾아 있으면 그대로 돌려주고(created=false, 요청 값으로 덮어쓰지 않음) 없으면 사전 등록으로 만듭니다(created=true).",
+    )
+    @PostMapping("/resolve-or-create")
+    fun resolveOrCreateTrainee(
+        @Valid @RequestBody reqDto: ResolveOrCreateTraineeReqDto,
+    ): ResolveOrCreateTraineeResDto = resolveOrCreateTraineeService.execute(reqDto)
 }
