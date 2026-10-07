@@ -172,6 +172,27 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `공식 6개 유형을 모두 받고 옛 값은 400이다`() {
+        listOf(
+            "KINDERGARTEN_STUDENT",
+            "ELEMENTARY_STUDENT",
+            "MIDDLE_HIGH_SCHOOL_STUDENT",
+            "GENERAL",
+            "TEACHER",
+            "PRE_SERVICE_TEACHER",
+        ).forEachIndexed { index, occupation ->
+            createStandard(phone = "0101000000$index", occupation = occupation).andExpect(status().isCreated)
+        }
+        count("tb_standard_participant") shouldBe 6L
+
+        // 공식 유형에서 빠진 옛 값은 받지 않는다
+        listOf("MIDDLE_SCHOOL_STUDENT", "HIGH_SCHOOL_STUDENT", "SCHOOL_STAFF", "PARENT").forEachIndexed { index, occupation ->
+            createStandard(phone = "0102000000$index", occupation = occupation).andExpect(status().isBadRequest)
+        }
+        count("tb_standard_participant") shouldBe 6L
+    }
+
+    @Test
     fun `삭제 중이거나 삭제된 박람회에는 만들 수 없고 409이다`() {
         jdbcTemplate.update("INSERT INTO tb_expo_deletion (expo_id, started_at) VALUES (?, now())", EXPO)
 
