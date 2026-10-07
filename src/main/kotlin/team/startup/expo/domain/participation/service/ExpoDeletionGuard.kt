@@ -16,9 +16,20 @@ class ExpoDeletionGuard(
     private val jdbcTemplate: JdbcTemplate,
 ) {
     fun requireNotDeleted(expoId: String) {
+        if (isDeleted(expoId)) throw ExpectedException(HttpStatus.CONFLICT, "삭제 중이거나 삭제된 박람회입니다.")
+    }
+
+    /**
+     * 같은 박람회의 삭제가 진행 중이면 끝나길 기다린 뒤 삭제 기록이 있는지 돌려준다. 삭제 중이거나 삭제된 박람회면 `true`이다.
+     * 설문 답변 컨슈머처럼 예외 대신 건너뛰어야 하는 호출자가 쓴다.
+     */
+    fun isDeleted(expoId: String): Boolean {
         jdbcTemplate.query("SELECT pg_advisory_xact_lock_shared(?, hashtext(?))", { _ -> }, ExpoDeletionLock.NAMESPACE, expoId)
-        val deleted =
-            jdbcTemplate.queryForObject("SELECT EXISTS (SELECT 1 FROM tb_expo_deletion WHERE expo_id = ?)", Boolean::class.java, expoId)
-        if (deleted == true) throw ExpectedException(HttpStatus.CONFLICT, "삭제 중이거나 삭제된 박람회입니다.")
+        return jdbcTemplate.queryForObject(
+            "SELECT EXISTS (SELECT 1 FROM tb_expo_deletion WHERE expo_id = ?)",
+            Boolean::class.java,
+            expoId,
+        ) ==
+            true
     }
 }

@@ -35,6 +35,10 @@ class SurveyAnswerEventConsumer(
     fun consume(record: ConsumerRecord<String, String>) {
         val event = parse(record.value())
         val result = saveSurveyAnswerService.execute(event)
+        if (result == null) {
+            log.info("삭제된 박람회의 설문 답변 이벤트를 건너뜀: eventId={}", event.eventId)
+            return
+        }
         publish(result)
         log.info("설문 답변 처리: eventId={}, status={}", result.eventId, result.status)
     }

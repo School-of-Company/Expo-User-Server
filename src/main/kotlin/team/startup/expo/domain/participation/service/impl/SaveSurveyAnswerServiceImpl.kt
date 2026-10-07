@@ -12,6 +12,7 @@ import team.startup.expo.domain.participation.presentation.dto.response.SurveyAn
 import team.startup.expo.domain.participation.repository.StandardParticipantRepository
 import team.startup.expo.domain.participation.repository.StandardParticipantSurveyAnswerRepository
 import team.startup.expo.domain.participation.repository.SurveyAnswerEventRepository
+import team.startup.expo.domain.participation.service.ExpoDeletionGuard
 import team.startup.expo.domain.participation.service.SaveSurveyAnswerService
 import team.startup.expo.domain.training.entity.TraineeSurveyAnswer
 import team.startup.expo.domain.training.repository.TraineeRepository
@@ -27,6 +28,9 @@ import team.startup.expo.global.util.PhoneNumbers
  * 응답자를 찾지 못하거나 번호를 하나로 특정할 수 없는 것은 다시 해도 같으므로 `REJECTED`이고,
  * 그 밖의 예외는 일시적 장애로 보고 전파해 컨슈머가 재시도하게 한다.
  *
+ * 삭제 중이거나 삭제된 박람회의 이벤트는 이벤트 기록과 답변을 남기지 않고 건너뛴다(`null`). 폼 서비스도 그 박람회의 접수 기록을
+ * 지웠으므로 결과를 받을 곳이 없다. 같은 박람회의 삭제와는 [ExpoDeletionGuard]의 lock으로 직렬화한다.
+ *
  * 조회 서비스를 호출하지 않고 저장소를 직접 쓴다. `@Transactional` 서비스에서 예외가 나가면 바깥
  * 트랜잭션이 rollback-only가 되어 `REJECTED` 기록까지 롤백되기 때문이다.
  */
@@ -37,9 +41,14 @@ class SaveSurveyAnswerServiceImpl(
     private val standardParticipantRepository: StandardParticipantRepository,
     private val traineeSurveyAnswerRepository: TraineeSurveyAnswerRepository,
     private val standardParticipantSurveyAnswerRepository: StandardParticipantSurveyAnswerRepository,
+    private val expoDeletionGuard: ExpoDeletionGuard,
 ) : SaveSurveyAnswerService {
     @Transactional
-    override fun execute(event: SurveyAnswerSubmittedEvent): SurveyAnswerResultEvent {
+    override fun execute(event: SurveyAnswerSubmittedEvent): SurveyAnswerResultEvent? {
+        // 박람회 삭제와 같은 박람회의 소비를 한 줄로 세운다. 삭제가 끝난 뒤(또는 진행 중인 삭제가 끝난 뒤)에 늦게 도착한 이벤트가
+        // 삭제된 박람회의 이벤트 기록이나 답변을 새로 남기지 않도록 아무것도 저장하지 않고 건너뛴다
+        if (expoDeletionGuard.isDeleted(event.expoId)) return null
+
         surveyAnswerEventRepository.findById(event.eventId).orElse(null)?.let {
             return SurveyAnswerResultEvent(it.eventId, it.status, it.reason)
         }
