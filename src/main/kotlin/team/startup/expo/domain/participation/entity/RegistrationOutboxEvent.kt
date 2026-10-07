@@ -30,8 +30,12 @@ class RegistrationOutboxEvent(
     val participationType: ParticipationType,
     @field:Column(name = "participant_id", nullable = false)
     val participantId: Long,
-    @field:Column(name = "phone_number", nullable = false, length = 30)
-    val phoneNumber: String,
+    // 동행자의 집계 이벤트(STANDARD_CREATED)에는 번호가 없다
+    @field:Column(name = "phone_number", length = 30)
+    val phoneNumber: String?,
+    // 이번 문자에 담을 참가자 `[{id, code}]`. 연수자의 등록 이벤트와 집계 이벤트에는 없다
+    @field:Column(name = "participants_json")
+    val participantsJson: String? = null,
     @field:Column(name = "created_at", nullable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
     @field:Column(name = "published_at")

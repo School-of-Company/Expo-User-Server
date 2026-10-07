@@ -34,9 +34,17 @@ class RegisterStandardParticipantServiceImpl(
                 body = reqDto.copy(requestId = null),
             ) {
                 val created = createStandardParticipantService.execute(reqDto)
-                registrationOutboxWriter.registered(reqDto.expoId, ParticipationType.STANDARD, created.participantId, created.phoneNumber)
-                if (created.created) {
-                    registrationOutboxWriter.standardCreated(reqDto.expoId, created.participantId, created.phoneNumber)
+                registrationOutboxWriter.registered(
+                    reqDto.expoId,
+                    ParticipationType.STANDARD,
+                    created.participantId,
+                    created.phoneNumber,
+                    created.participants,
+                )
+                // 새로 만든 참가자마다 집계 이벤트를 만든다. 번호는 대표자만 있다
+                created.createdIds.forEach {
+                    val phoneNumber = if (it == created.participantId) created.phoneNumber else null
+                    registrationOutboxWriter.standardCreated(reqDto.expoId, it, phoneNumber)
                 }
                 Registration(created.participantId, created.phoneNumber, created.created)
             }

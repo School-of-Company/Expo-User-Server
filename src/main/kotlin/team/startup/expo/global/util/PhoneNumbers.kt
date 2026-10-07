@@ -26,7 +26,7 @@ object PhoneNumbers {
     fun <T> select(
         candidates: List<T>,
         rawInput: String,
-        phoneNumberOf: (T) -> String,
+        phoneNumberOf: (T) -> String?,
     ): T? {
         candidates.firstOrNull { phoneNumberOf(it) == rawInput }?.let { return it }
         return when (candidates.size) {

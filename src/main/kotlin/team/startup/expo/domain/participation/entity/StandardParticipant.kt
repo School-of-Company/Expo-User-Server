@@ -13,6 +13,7 @@ import jakarta.persistence.UniqueConstraint
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
 import team.startup.expo.domain.training.entity.ApplicationType
+import team.startup.expo.global.util.ParticipantCode
 import java.time.LocalDateTime
 
 @Entity
@@ -30,8 +31,9 @@ class StandardParticipant(
     val expoId: String,
     @field:Column(nullable = false, length = 10)
     val name: String,
-    @field:Column(name = "phone_number", nullable = false, length = 15)
-    val phoneNumber: String,
+    // 동행자는 번호가 없고 문자는 대표자 번호로 간다
+    @field:Column(name = "phone_number", length = 15)
+    val phoneNumber: String?,
     @field:JdbcTypeCode(SqlTypes.JSON)
     @field:Column(name = "information_json", columnDefinition = "jsonb")
     val informationJson: String? = null,
@@ -54,6 +56,15 @@ class StandardParticipant(
     @field:JdbcTypeCode(SqlTypes.JSON)
     @field:Column(name = "information_questions", columnDefinition = "jsonb")
     val informationQuestions: String? = null,
+    // 동행자가 속한 대표자. 대표자는 null이다
+    @field:Column(name = "representative_id")
+    val representativeId: Long? = null,
+    @field:Enumerated(EnumType.STRING)
+    @field:Column(length = 20)
+    val region: Region? = null,
+    // QR에 담는 값이다. 만들 때 정하고 바꾸지 않으며 조회 API나 로그에 싣지 않는다
+    @field:Column(nullable = false, length = 22, unique = true, updatable = false)
+    val code: String = ParticipantCode.generate(),
     smsTryTime: Int = 0,
 ) {
     @field:Column(name = "sms_try_time", nullable = false)
