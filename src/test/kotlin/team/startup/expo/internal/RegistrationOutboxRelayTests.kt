@@ -64,10 +64,15 @@ class RegistrationOutboxRelayTests : IntegrationTestSupport() {
             """{"expoId":"$EXPO","name":"홍길동","phoneNumber":"$PHONE","informationJson":"{}","personalInformationStatus":true,"applicationType":"PRE"}""",
         )
         val participantId = jdbcTemplate.queryForObject("SELECT id FROM tb_standard_participant", Long::class.java)!!
-        val outboxIds = jdbcTemplate.queryForList("SELECT event_id FROM tb_registration_outbox ORDER BY id", String::class.java)
+        val outboxIds =
+            jdbcTemplate
+                .queryForList(
+                    "SELECT event_id FROM tb_registration_outbox ORDER BY id",
+                    String::class.java,
+                ).map { it!! }
 
-        val registered = jsonMapper.readTree(awaitRecord(registeredConsumer))
-        val standardCreated = jsonMapper.readTree(awaitRecord(standardCreatedConsumer))
+        val registered = jsonMapper.readTree(awaitRecord(registeredConsumer, outboxIds[0]))
+        val standardCreated = jsonMapper.readTree(awaitRecord(standardCreatedConsumer, outboxIds[1]))
 
         registered.get("eventId").asString() shouldBe outboxIds[0]
         registered.get("expoId").asString() shouldBe EXPO
@@ -95,8 +100,11 @@ class RegistrationOutboxRelayTests : IntegrationTestSupport() {
                     ),
             ).andExpect(status().isCreated)
 
-        val registered = jsonMapper.readTree(awaitRecord(registeredConsumer))
+        val eventId = jdbcTemplate.queryForObject("SELECT event_id FROM tb_registration_outbox", String::class.java)!!
 
+        val registered = jsonMapper.readTree(awaitRecord(registeredConsumer, eventId))
+
+        registered.get("eventId").asString() shouldBe eventId
         registered.get("participationType").asString() shouldBe "TRAINEE"
         registered.get("phoneNumber").asString() shouldBe PHONE
     }
@@ -124,12 +132,16 @@ class RegistrationOutboxRelayTests : IntegrationTestSupport() {
         error("아웃박스가 ${AWAIT_MILLIS}ms 안에 모두 발행되지 않았습니다.")
     }
 
-    private fun awaitRecord(consumer: KafkaConsumer<String, String>): String {
+    // 테스트끼리 토픽을 공유하고 컨슈머는 처음부터 읽으므로, 앞 테스트의 레코드를 건너뛰고 이 테스트의 eventId만 찾는다
+    private fun awaitRecord(
+        consumer: KafkaConsumer<String, String>,
+        eventId: String,
+    ): String {
         val deadline = System.currentTimeMillis() + AWAIT_MILLIS
         while (System.currentTimeMillis() < deadline) {
-            consumer.poll(Duration.ofMillis(500)).firstOrNull()?.let { return it.value() }
+            consumer.poll(Duration.ofMillis(500)).firstOrNull { it.value().contains("\"eventId\":\"$eventId\"") }?.let { return it.value() }
         }
-        error("기대한 메시지가 ${AWAIT_MILLIS}ms 안에 오지 않았습니다.")
+        error("eventId=$eventId 메시지가 ${AWAIT_MILLIS}ms 안에 오지 않았습니다.")
     }
 
     private fun consumerOf(topic: String): KafkaConsumer<String, String> =

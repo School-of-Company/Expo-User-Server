@@ -170,6 +170,17 @@ class RegistrationIdempotencyApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `삭제가 시작된 박람회는 요청 기록이 남아 있어도 같은 requestId의 재시도에 409이고 기존 ID를 돌려주지 않는다`() {
+        standard(REQUEST_A).andExpect(status().isCreated)
+        // 삭제 트랜잭션이 기록을 남기고 아직 행을 지우지 못한 상태. 요청 기록은 그대로 있다
+        jdbcTemplate.update("INSERT INTO tb_expo_deletion (expo_id, started_at) VALUES (?, now())", EXPO)
+        count("tb_registration_request") shouldBe 1
+
+        standard(REQUEST_A).andExpect(status().isConflict)
+        trainee(REQUEST_B, "T-1", PHONE).andExpect(status().isConflict)
+    }
+
+    @Test
     fun `응답 본문에는 created를 싣지 않는다`() {
         standard(REQUEST_A)
             .andExpect(status().isCreated)
@@ -232,6 +243,7 @@ class RegistrationIdempotencyApiTests : IntegrationTestSupport() {
         const val EXPO = "0199aaaa-0000-7000-8000-0000000000b1"
         const val PHONE = "01012345678"
         const val REQUEST_A = "request-a"
+        const val REQUEST_B = "request-b"
         const val THREADS = 8
     }
 }

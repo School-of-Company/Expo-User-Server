@@ -384,14 +384,24 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `eventId가 없거나 비어 있으면 400이다`() {
+    fun `eventId가 비어 있으면 400이다`() {
         createStandard(phone = PHONE).andExpect(status().isCreated)
 
-        post("/internal/participants/sms-try", """{"expoId":"$EXPO","participationType":"STANDARD","phoneNumber":"$PHONE"}""")
-            .andExpect(status().isBadRequest)
         smsTry("STANDARD", PHONE, eventId = "").andExpect(status().isBadRequest)
 
         jdbcTemplate.queryForObject("SELECT sms_try_time FROM tb_standard_participant", Int::class.java) shouldBe 0
+    }
+
+    @Test
+    fun `eventId가 없으면 전환 기간 동안 기존처럼 호출마다 올리고 기록은 남기지 않는다`() {
+        createStandard(phone = PHONE).andExpect(status().isCreated)
+        val body = """{"expoId":"$EXPO","participationType":"STANDARD","phoneNumber":"$PHONE"}"""
+
+        post("/internal/participants/sms-try", body).andExpect(status().isNoContent)
+        post("/internal/participants/sms-try", body).andExpect(status().isNoContent)
+
+        jdbcTemplate.queryForObject("SELECT sms_try_time FROM tb_standard_participant", Int::class.java) shouldBe 2
+        count("tb_sms_try_event") shouldBe 0
     }
 
     // --- 인증
