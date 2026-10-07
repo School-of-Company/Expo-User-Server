@@ -20,16 +20,28 @@ object InformationJson {
     }
 
     /**
-     * 저장된 JSON을 응답용 노드로 읽는다. 값이 없거나 읽을 수 없으면 빈 객체이다. 저장 방식에 따라 JSON 문자열이
-     * 한 번 더 따옴표로 감싸여 있을 수 있어, 그런 경우에는 안쪽을 다시 읽는다.
+     * 저장된 JSON을 응답용 노드로 읽는다. 값이 없거나 읽을 수 없으면 빈 객체이다. 저장 방식에 따라 JSON이 한 번 더
+     * 문자열로 감싸여 있을 수 있어, 그 안쪽이 객체나 배열일 때만 풀어서 돌려준다. 안쪽이 그 밖의 값이면 원래 JSON
+     * 문자열 값(`"광주"`, `"123"`)이므로 타입이나 내용을 바꾸지 않고 그대로 둔다.
      */
     fun toNode(json: String?): JsonNode {
         if (json.isNullOrBlank()) return mapper.createObjectNode()
-        return try {
-            val node = mapper.readTree(json)
-            if (node.isString) mapper.readTree(node.asString()) else node
-        } catch (_: JacksonException) {
-            mapper.createObjectNode()
-        }
+        val node =
+            try {
+                mapper.readTree(json)
+            } catch (_: JacksonException) {
+                return mapper.createObjectNode()
+            }
+        return if (node.isString) unwrapSerialized(node) else node
+    }
+
+    private fun unwrapSerialized(node: JsonNode): JsonNode {
+        val inner =
+            try {
+                mapper.readTree(node.asString())
+            } catch (_: JacksonException) {
+                return node
+            }
+        return if (inner.isObject || inner.isArray) inner else node
     }
 }
