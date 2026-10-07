@@ -11,7 +11,7 @@ import team.startup.expo.domain.participation.service.PurgeExpoDataService
  * 끝나 재시도할 수 있어야 하고, 이미 지웠거나 데이터가 없어도 성공해야 한다.
  *
  * 모두 한 트랜잭션이라 중간에 실패하면 삭제 기록과 데이터가 함께 되돌아간다. 입장 기록과 설문 답변은 참가자에
- * `ON DELETE CASCADE`로 걸려 있어 참가자를 지우면 같이 지워지고, 설문 답변 이벤트 기록(`tb_survey_answer_event`)은 `expo_id`로 지운다.
+ * `ON DELETE CASCADE`로 걸려 있어 참가자를 지우면 같이 지워지고, 설문 답변 이벤트 기록(`tb_survey_answer_event`), 등록 요청 기록(`tb_registration_request`), 등록 아웃박스(`tb_registration_outbox`)는 `expo_id`로 지운다. 문자 이벤트 기록(`tb_sms_try_event`)은 참가자에 `ON DELETE CASCADE`로 걸려 있다.
  */
 @Service
 class PurgeExpoDataServiceImpl(
@@ -29,6 +29,9 @@ class PurgeExpoDataServiceImpl(
         jdbcTemplate.update("DELETE FROM tb_standard_participant WHERE expo_id = ?", expoId)
         // 설문 답변 이벤트 기록은 참가자에 딸려 있지 않아 따로 지운다. 지우지 않으면 삭제된 박람회의 기록이 남는다
         jdbcTemplate.update("DELETE FROM tb_survey_answer_event WHERE expo_id = ?", expoId)
+        // 등록 요청 기록과 아웃박스도 참가자에 딸려 있지 않다. 아직 발행하지 않은 이벤트는 지워져 삭제된 박람회의 QR 문자가 나가지 않는다
+        jdbcTemplate.update("DELETE FROM tb_registration_request WHERE expo_id = ?", expoId)
+        jdbcTemplate.update("DELETE FROM tb_registration_outbox WHERE expo_id = ?", expoId)
         jdbcTemplate.update("UPDATE tb_expo_deletion SET completed_at = (now() AT TIME ZONE 'UTC') WHERE expo_id = ?", expoId)
     }
 }

@@ -7,9 +7,11 @@ import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.listener.CommonErrorHandler
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer
 import org.springframework.kafka.listener.DefaultErrorHandler
+import org.springframework.scheduling.annotation.EnableScheduling
 import org.springframework.util.backoff.ExponentialBackOff
 
 @Configuration
+@EnableScheduling
 class KafkaConfig(
     private val properties: SurveyAnswerProperties,
 ) {

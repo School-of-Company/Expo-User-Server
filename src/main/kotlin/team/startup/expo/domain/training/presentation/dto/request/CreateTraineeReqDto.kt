@@ -25,4 +25,7 @@ data class CreateTraineeReqDto(
     val applicationType: ApplicationType,
     @field:Size(max = 100)
     val school: String? = null,
+    // Application의 `Idempotency-Key`. 같은 등록의 재시도에는 같은 값을 보낸다. 없으면 멱등 처리 없이 등록한다
+    @field:Size(min = 1, max = 100)
+    val requestId: String? = null,
 )
