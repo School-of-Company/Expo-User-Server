@@ -12,6 +12,8 @@ import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.transaction.support.TransactionTemplate
+import team.startup.expo.domain.participation.service.ExpoDeletionLock
 import team.startup.expo.support.IntegrationTestSupport
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -20,6 +22,9 @@ import java.util.concurrent.TimeUnit
 class TraineeResolveOrCreateApiTests : IntegrationTestSupport() {
     @Autowired
     private lateinit var mockMvc: MockMvc
+
+    @Autowired
+    private lateinit var transactionTemplate: TransactionTemplate
 
     private val executor = Executors.newFixedThreadPool(THREADS)
 
@@ -106,6 +111,28 @@ class TraineeResolveOrCreateApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `같은 연수 번호가 둘 생기면 연수 번호로 찾는 resolve는 409로 실패한다`() {
+        // 연수 번호 중복을 허용하는 정책(v1)의 영향을 고정한다. 이 정책을 바꾸면 이 테스트도 함께 바꾼다
+        resolveOrCreate(trainingId = "T-1", phone = PHONE).andExpect(jsonPath("$.created").value(true))
+        mockMvc
+            .perform(
+                post("/internal/trainees/resolve")
+                    .header("X-Internal-Token", INTERNAL_TOKEN)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"expoId":"$EXPO","trainingId":"T-1"}"""),
+            ).andExpect(status().isOk)
+
+        resolveOrCreate(trainingId = "T-1", phone = "01099998888").andExpect(jsonPath("$.created").value(true))
+        mockMvc
+            .perform(
+                post("/internal/trainees/resolve")
+                    .header("X-Internal-Token", INTERNAL_TOKEN)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"expoId":"$EXPO","trainingId":"T-1"}"""),
+            ).andExpect(status().isConflict)
+    }
+
+    @Test
     fun `같은 번호의 동시 요청은 하나만 만들고 모두 같은 traineeId를 받는다`() {
         val start = CountDownLatch(1)
         val futures =
@@ -129,6 +156,55 @@ class TraineeResolveOrCreateApiTests : IntegrationTestSupport() {
         jdbcTemplate.update("INSERT INTO tb_expo_deletion (expo_id, started_at) VALUES (?, now())", EXPO)
 
         resolveOrCreate(trainingId = "T-1", phone = PHONE).andExpect(status().isConflict)
+        count() shouldBe 0
+    }
+
+    @Test
+    fun `소속 학교는 만들 때만 저장하고 재사용할 때는 바꾸지 않는다`() {
+        resolveOrCreate(trainingId = "T-1", phone = PHONE, school = "빛고을초등학교").andExpect(jsonPath("$.created").value(true))
+        jdbcTemplate.queryForObject("SELECT school FROM tb_trainee", String::class.java) shouldBe "빛고을초등학교"
+
+        resolveOrCreate(trainingId = "T-1", phone = PHONE, school = "다른학교").andExpect(jsonPath("$.created").value(false))
+        jdbcTemplate.queryForObject("SELECT school FROM tb_trainee", String::class.java) shouldBe "빛고을초등학교"
+
+        resolveOrCreate(trainingId = "T-2", phone = "01099998888").andExpect(jsonPath("$.created").value(true))
+        jdbcTemplate.queryForObject("SELECT school FROM tb_trainee WHERE phone_number = '01099998888'", String::class.java) shouldBe null
+    }
+
+    @Test
+    fun `삭제 기록이 있는 박람회는 기존 연수자도 돌려주지 않고 409이다`() {
+        resolveOrCreate(trainingId = "T-1", phone = PHONE).andExpect(jsonPath("$.created").value(true))
+        jdbcTemplate.update("INSERT INTO tb_expo_deletion (expo_id, started_at) VALUES (?, now())", EXPO)
+
+        resolveOrCreate(trainingId = "T-1", phone = PHONE).andExpect(status().isConflict)
+    }
+
+    @Test
+    fun `삭제가 커밋되기 전에 들어온 요청은 기다렸다가 기존 연수자를 돌려주지 않고 409이다`() {
+        resolveOrCreate(trainingId = "T-1", phone = PHONE).andExpect(jsonPath("$.created").value(true))
+        val locked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val deleting =
+            executor.submit {
+                transactionTemplate.executeWithoutResult {
+                    // 삭제 트랜잭션처럼 배타 lock을 잡고 연수자를 지운 뒤 아직 커밋하지 않는다
+                    jdbcTemplate.query("SELECT pg_advisory_xact_lock(?, hashtext(?))", { _ -> }, ExpoDeletionLock.NAMESPACE, EXPO)
+                    jdbcTemplate.update("INSERT INTO tb_expo_deletion (expo_id, started_at) VALUES (?, now())", EXPO)
+                    jdbcTemplate.update("DELETE FROM tb_trainee WHERE expo_id = ?", EXPO)
+                    locked.countDown()
+                    release.await(10, TimeUnit.SECONDS)
+                }
+            }
+        locked.await(10, TimeUnit.SECONDS) shouldBe true
+
+        val resolving = executor.submit<Int> { resolveOrCreate(trainingId = "T-1", phone = PHONE).andReturn().response.status }
+        Thread.sleep(BLOCK_CHECK_MILLIS)
+        // 지워진 행을 읽어 곧 사라질 ID를 돌려주지 않고 삭제가 끝나길 기다린다
+        resolving.isDone shouldBe false
+
+        release.countDown()
+        deleting.get(10, TimeUnit.SECONDS)
+        resolving.get(10, TimeUnit.SECONDS) shouldBe 409
         count() shouldBe 0
     }
 
@@ -164,7 +240,8 @@ class TraineeResolveOrCreateApiTests : IntegrationTestSupport() {
         name: String = "연수자",
         informationJson: String? = "{\"1\":\"a\"}",
         personalInformationStatus: Boolean = true,
-    ): ResultActions = send(body(expoId, trainingId, phone, name, informationJson, personalInformationStatus))
+        school: String? = null,
+    ): ResultActions = send(body(expoId, trainingId, phone, name, informationJson, personalInformationStatus, school))
 
     private fun send(body: String): ResultActions =
         mockMvc.perform(post(PATH).header("X-Internal-Token", INTERNAL_TOKEN).contentType(MediaType.APPLICATION_JSON).content(body))
@@ -176,10 +253,13 @@ class TraineeResolveOrCreateApiTests : IntegrationTestSupport() {
         name: String,
         informationJson: String?,
         personalInformationStatus: Boolean,
-    ) = """{"expoId":"$expoId","trainingId":"$trainingId","name":"$name","phoneNumber":"$phone","informationJson":${json(
-        informationJson,
-    )},""" +
-        """"personalInformationStatus":$personalInformationStatus}"""
+        school: String? = null,
+    ): String {
+        val info = json(informationJson)
+        val schoolJson = json(school)
+        return """{"expoId":"$expoId","trainingId":"$trainingId","name":"$name","phoneNumber":"$phone","informationJson":$info,""" +
+            """"personalInformationStatus":$personalInformationStatus,"school":$schoolJson}"""
+    }
 
     private fun json(value: String?) = if (value == null) "null" else "\"" + value.replace("\"", "\\\"") + "\""
 
@@ -197,5 +277,6 @@ class TraineeResolveOrCreateApiTests : IntegrationTestSupport() {
         const val OTHER_EXPO = "0199aaaa-0000-7000-8000-0000000000c2"
         const val PHONE = "01012345678"
         const val THREADS = 8
+        const val BLOCK_CHECK_MILLIS = 500L
     }
 }
