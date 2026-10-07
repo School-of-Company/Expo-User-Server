@@ -15,7 +15,9 @@ import org.springframework.context.annotation.Import
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
+import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.kafka.KafkaContainer
+import team.startup.expo.domain.participation.service.ExpoDeletionLock
 import team.startup.expo.domain.training.entity.ApplicationType
 import team.startup.expo.domain.training.entity.Trainee
 import team.startup.expo.domain.training.repository.TraineeRepository
@@ -24,6 +26,9 @@ import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
 import java.time.LocalDateTime
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @Import(SurveyAnswerConsumerTests.KafkaContainerConfig::class)
 class SurveyAnswerConsumerTests : IntegrationTestSupport() {
@@ -39,13 +44,16 @@ class SurveyAnswerConsumerTests : IntegrationTestSupport() {
     @Autowired
     private lateinit var jsonMapper: JsonMapper
 
+    @Autowired
+    private lateinit var transactionTemplate: TransactionTemplate
+
     private lateinit var resultConsumer: KafkaConsumer<String, String>
     private lateinit var deadLetterConsumer: KafkaConsumer<String, String>
 
     @BeforeEach
     fun setUp() {
         jdbcTemplate.execute(
-            "TRUNCATE TABLE tb_survey_answer_event, tb_trainee_survey_answer, tb_standard_participant_survey_answer, " +
+            "TRUNCATE TABLE tb_expo_deletion, tb_survey_answer_event, tb_trainee_survey_answer, tb_standard_participant_survey_answer, " +
                 "tb_trainee, tb_standard_participant RESTART IDENTITY CASCADE",
         )
         traineeRepository.save(
@@ -137,10 +145,102 @@ class SurveyAnswerConsumerTests : IntegrationTestSupport() {
         count("tb_trainee_survey_answer") shouldBe 0L
     }
 
+    @Test
+    fun `삭제된 박람회의 이벤트는 기록과 답변과 결과 없이 건너뛴다`() {
+        jdbcTemplate.update("INSERT INTO tb_expo_deletion (expo_id, started_at) VALUES (?, now())", EXPO_ID)
+        val skipped = newEventId()
+        val alive = newEventId()
+        saveTrainee(OTHER_EXPO_ID, "01033334444")
+
+        send(skipped)
+        // 같은 토픽은 순서대로 처리되므로 뒤의 이벤트 결과가 오면 앞의 이벤트는 이미 처리를 마친 것이다
+        send(alive, phoneNumber = "01033334444", expoId = OTHER_EXPO_ID)
+        val published = collectResultsUntil(alive)
+
+        published.none { it.contains(skipped) } shouldBe true
+        count("tb_survey_answer_event") shouldBe 1L
+        jdbcTemplate.queryForObject("SELECT count(*) FROM tb_survey_answer_event WHERE event_id = ?", Long::class.java, skipped) shouldBe 0L
+        count("tb_trainee_survey_answer") shouldBe 1L
+    }
+
+    @Test
+    fun `삭제가 커밋되기 전에 도착한 이벤트는 삭제가 끝나길 기다렸다가 건너뛴다`() {
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val locked = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val deleting =
+                executor.submit {
+                    transactionTemplate.executeWithoutResult {
+                        // 삭제 트랜잭션처럼 배타 lock을 잡고 삭제 기록을 남긴 뒤 아직 커밋하지 않는다
+                        jdbcTemplate.query("SELECT pg_advisory_xact_lock(?, hashtext(?))", { _ -> }, ExpoDeletionLock.NAMESPACE, EXPO_ID)
+                        jdbcTemplate.update("INSERT INTO tb_expo_deletion (expo_id, started_at) VALUES (?, now())", EXPO_ID)
+                        locked.countDown()
+                        release.await(20, TimeUnit.SECONDS)
+                    }
+                }
+            locked.await(10, TimeUnit.SECONDS) shouldBe true
+            val skipped = newEventId()
+            send(skipped)
+
+            Thread.sleep(BLOCK_CHECK_MILLIS)
+            // 소비가 삭제의 lock에 막혀 있으므로 그 사이에는 아무것도 저장하지 않는다
+            count("tb_survey_answer_event") shouldBe 0L
+            count("tb_trainee_survey_answer") shouldBe 0L
+
+            release.countDown()
+            deleting.get(10, TimeUnit.SECONDS)
+
+            val alive = newEventId()
+            saveTrainee(OTHER_EXPO_ID, "01033334444")
+            send(alive, phoneNumber = "01033334444", expoId = OTHER_EXPO_ID)
+            collectResultsUntil(alive).none { it.contains(skipped) } shouldBe true
+            // 삭제 뒤에 소비를 마쳐도 삭제된 박람회의 기록은 남지 않는다
+            jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM tb_survey_answer_event WHERE event_id = ?",
+                Long::class.java,
+                skipped,
+            ) shouldBe
+                0L
+            count("tb_trainee_survey_answer") shouldBe 1L
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    private fun saveTrainee(
+        expoId: String,
+        phoneNumber: String,
+    ) {
+        traineeRepository.save(
+            Trainee(
+                expoId = expoId,
+                name = "다른연수자",
+                phoneNumber = phoneNumber,
+                trainingId = "T-0002",
+                informationJson = "{}",
+                personalInformationStatus = true,
+                applicationType = ApplicationType.PRE,
+                applicationDate = LocalDateTime.of(2026, 9, 22, 10, 0),
+            ),
+        )
+    }
+
+    /** [eventId]의 결과가 올 때까지 결과 토픽에서 읽은 메시지를 모두 돌려준다. */
+    private fun collectResultsUntil(eventId: String): List<String> {
+        val collected = mutableListOf<String>()
+        awaitRecord(resultConsumer) {
+            collected += it
+            it.contains("\"eventId\":\"$eventId\"")
+        }
+        return collected
+    }
+
     private fun send(
         eventId: String,
         phoneNumber: String = "01011112222",
         version: Int = 1,
+        expoId: String = EXPO_ID,
     ) {
         val value =
             jsonMapper.writeValueAsString(
@@ -148,7 +248,7 @@ class SurveyAnswerConsumerTests : IntegrationTestSupport() {
                     "eventId" to eventId,
                     "version" to version,
                     "surveyId" to SURVEY_ID,
-                    "expoId" to EXPO_ID,
+                    "expoId" to expoId,
                     "participationType" to "TRAINEE",
                     "phoneNumber" to phoneNumber,
                     "answerJson" to """{"1":"만족"}""",
@@ -195,6 +295,8 @@ class SurveyAnswerConsumerTests : IntegrationTestSupport() {
 
     companion object {
         private const val EXPO_ID = "0199aaaa-0000-7000-8000-000000000001"
+        private const val OTHER_EXPO_ID = "0199aaaa-0000-7000-8000-000000000002"
+        private const val BLOCK_CHECK_MILLIS = 2_000L
         private const val SURVEY_ID = "5d1c7f4e-0000-4000-8000-000000000001"
         private const val SUBMIT_TOPIC = "survey.answer.submit"
         private const val RESULT_TOPIC = "survey.answer.result"
