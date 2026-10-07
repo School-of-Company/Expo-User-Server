@@ -3,6 +3,7 @@ package team.startup.expo.domain.training.service.impl
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import team.startup.expo.domain.participation.service.ExpoDeletionGuard
 import team.startup.expo.domain.participation.service.ParticipantRegistrationLock
 import team.startup.expo.domain.training.entity.ApplicationType
 import team.startup.expo.domain.training.entity.Trainee
@@ -21,18 +22,22 @@ import java.time.LocalDateTime
  * `PRE`로 만든다. 박람회 등록(`POST /internal/trainees`)과 달리 연수 번호나 전화번호가 겹쳐도 거부하지 않는다.
  *
  * v1은 연수 번호(`trainingId`)가 겹치는지 보지 않으므로 같은 번호에 다른 연수 번호가 와도 기존 연수자를 쓰고,
- * 다른 번호에 같은 연수 번호가 와도 새로 만든다. 같은 요청을 다시 보내면(Application 신청이 실패해 재시도하는 경우)
+ * 다른 번호에 같은 연수 번호가 와도 새로 만든다. 이렇게 같은 연수 번호가 둘 생기면 연수 번호로 찾는 `/internal/trainees/resolve`는
+ * 하나로 특정할 수 없어 409로 실패한다. 이 정책은 Expo 담당자와 합의가 필요한 열린 결정이다(`#42`). 같은 요청을 다시 보내면(Application 신청이 실패해 재시도하는 경우)
  * 같은 `traineeId`를 돌려준다. 같은 번호의 동시 요청은 [ParticipantRegistrationLock]으로 직렬화해 하나만 만든다.
  */
 @Service
 class ResolveOrCreateTraineeServiceImpl(
     private val traineeRepository: TraineeRepository,
     private val registrationLock: ParticipantRegistrationLock,
+    private val expoDeletionGuard: ExpoDeletionGuard,
 ) : ResolveOrCreateTraineeService {
     @Transactional
     override fun execute(reqDto: ResolveOrCreateTraineeReqDto): ResolveOrCreateTraineeResDto {
         InformationJson.requireValid(reqDto.informationJson)
         val digits = PhoneNumbers.digitsOnly(reqDto.phoneNumber)
+        // 이미 있는 연수자를 돌려주는 경로도 삭제 중인 박람회의 곧 사라질 ID를 주지 않도록 가장 먼저 확인한다
+        expoDeletionGuard.requireNotDeleted(reqDto.expoId)
         registrationLock.lockPhone(reqDto.expoId, digits)
 
         val existing =
@@ -54,6 +59,7 @@ class ResolveOrCreateTraineeServiceImpl(
                         personalInformationStatus = reqDto.personalInformationStatus,
                         applicationType = ApplicationType.PRE,
                         applicationDate = LocalDateTime.now(),
+                        school = reqDto.school,
                     ),
                 )
             } catch (exception: DataIntegrityViolationException) {

@@ -20,4 +20,7 @@ data class ResolveOrCreateTraineeReqDto(
     val informationJson: String? = null,
     @field:NotNull
     val personalInformationStatus: Boolean,
+    /** 명찰 출력에 쓴다. 새로 만들 때만 저장하고 없으면 null이다. */
+    @field:Size(max = 100)
+    val school: String? = null,
 )
