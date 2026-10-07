@@ -139,10 +139,61 @@ class SurveyAnswerConsumerTests : IntegrationTestSupport() {
     fun `지원하지 않는 버전은 저장하지 않고 dead letter 토픽으로 간다`() {
         val eventId = newEventId()
 
-        send(eventId, version = 2)
+        send(eventId, version = 3)
 
         awaitRecord(deadLetterConsumer) { it.contains(eventId) }
         count("tb_trainee_survey_answer") shouldBe 0L
+    }
+
+    @Test
+    fun `v2 이벤트는 제출 당시 문항 스냅샷을 답변과 함께 저장한다`() {
+        val eventId = newEventId()
+
+        send(eventId, version = 2, questions = QUESTIONS)
+
+        awaitResult(eventId) shouldBe """{"eventId":"$eventId","status":"STORED","reason":null}"""
+        answerSnapshotTitle(SURVEY_ID) shouldBe "만족도"
+        // 답변은 문항 ID를 키로 하는 그대로이고 스냅샷은 별도 컬럼이다
+        jdbcTemplate.queryForObject("SELECT answer_json ->> '1' FROM tb_trainee_survey_answer", String::class.java) shouldBe "만족"
+    }
+
+    @Test
+    fun `v1 이벤트는 스냅샷 없이 저장하고 v1과 v2가 섞여도 각각 처리한다`() {
+        val v1 = newEventId()
+        val v2 = newEventId()
+
+        send(v1)
+        send(v2, version = 2, surveyId = OTHER_SURVEY_ID, questions = QUESTIONS)
+
+        awaitResult(v1)
+        awaitResult(v2)
+        count("tb_trainee_survey_answer") shouldBe 2L
+        answerSnapshotTitle(SURVEY_ID) shouldBe null
+        answerSnapshotTitle(OTHER_SURVEY_ID) shouldBe "만족도"
+    }
+
+    @Test
+    fun `같은 eventId의 v2 이벤트가 다시 오면 저장 없이 같은 결과를 주고 스냅샷도 그대로이다`() {
+        val eventId = newEventId()
+
+        send(eventId, version = 2, questions = QUESTIONS)
+        awaitResult(eventId)
+        send(eventId, version = 2, questions = listOf(mapOf("id" to "9", "title" to "바뀜")))
+
+        awaitResult(eventId) shouldBe """{"eventId":"$eventId","status":"STORED","reason":null}"""
+        count("tb_trainee_survey_answer") shouldBe 1L
+        answerSnapshotTitle(SURVEY_ID) shouldBe "만족도"
+    }
+
+    @Test
+    fun `questions가 배열이 아닌 이벤트는 저장하지 않고 dead letter 토픽으로 간다`() {
+        val eventId = newEventId()
+
+        send(eventId, version = 2, questions = mapOf("id" to "1", "title" to "만족도"))
+
+        awaitRecord(deadLetterConsumer) { it.contains(eventId) }
+        count("tb_trainee_survey_answer") shouldBe 0L
+        count("tb_survey_answer_event") shouldBe 0L
     }
 
     @Test
@@ -241,21 +292,24 @@ class SurveyAnswerConsumerTests : IntegrationTestSupport() {
         phoneNumber: String = "01011112222",
         version: Int = 1,
         expoId: String = EXPO_ID,
+        surveyId: String = SURVEY_ID,
+        questions: Any? = null,
     ) {
-        val value =
-            jsonMapper.writeValueAsString(
-                mapOf(
-                    "eventId" to eventId,
-                    "version" to version,
-                    "surveyId" to SURVEY_ID,
-                    "expoId" to expoId,
-                    "participationType" to "TRAINEE",
-                    "phoneNumber" to phoneNumber,
-                    "answerJson" to """{"1":"만족"}""",
-                    "personalInformationStatus" to true,
-                ),
+        val payload =
+            mutableMapOf<String, Any?>(
+                "eventId" to eventId,
+                "version" to version,
+                "surveyId" to surveyId,
+                "expoId" to expoId,
+                "participationType" to "TRAINEE",
+                "phoneNumber" to phoneNumber,
+                "answerJson" to """{"1":"만족"}""",
+                "personalInformationStatus" to true,
             )
-        kafkaTemplate.send(SUBMIT_TOPIC, "$SURVEY_ID:$phoneNumber", value).get()
+        // v1 이벤트에는 questions 필드 자체가 없다
+        if (questions != null) payload["questions"] = questions
+        val value = jsonMapper.writeValueAsString(payload)
+        kafkaTemplate.send(SUBMIT_TOPIC, "$surveyId:$phoneNumber", value).get()
     }
 
     private fun awaitResult(eventId: String): String = awaitRecord(resultConsumer) { it.contains("\"eventId\":\"$eventId\"") }
@@ -282,6 +336,13 @@ class SurveyAnswerConsumerTests : IntegrationTestSupport() {
             ),
         ).apply { subscribe(listOf(topic)) }
 
+    private fun answerSnapshotTitle(surveyId: String): String? =
+        jdbcTemplate.queryForObject(
+            "SELECT answer_questions -> 0 ->> 'title' FROM tb_trainee_survey_answer WHERE survey_id = ?",
+            String::class.java,
+            surveyId,
+        )
+
     private fun count(table: String): Long = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM $table", Long::class.java)!!
 
     private fun newEventId() = UUID.randomUUID().toString()
@@ -302,6 +363,8 @@ class SurveyAnswerConsumerTests : IntegrationTestSupport() {
         private const val RESULT_TOPIC = "survey.answer.result"
         private const val DEAD_LETTER_TOPIC = "survey.answer.submit.dlt"
         private const val AWAIT_MILLIS = 30_000L
+        private const val OTHER_SURVEY_ID = "5d1c7f4e-0000-4000-8000-000000000002"
+        private val QUESTIONS = listOf(mapOf("id" to "1", "title" to "만족도", "order" to 0, "formType" to "SENTENCE"))
 
         @JvmStatic
         @DynamicPropertySource
