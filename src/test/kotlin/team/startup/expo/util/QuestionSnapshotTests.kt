@@ -39,12 +39,12 @@ class QuestionSnapshotTests {
     }
 
     @Test
-    fun `문항 수가 상한을 넘으면 오류이다`() {
-        val within = (1..1_000).joinToString(",", "[", "]") { """{"id":"$it"}""" }
-        val over = (1..1_001).joinToString(",", "[", "]") { """{"id":"$it"}""" }
+    fun `문항 수에는 상한이 없어 큰 설문도 받는다`() {
+        // Form은 문항 수를 제한하지 않으므로 정상 접수된 큰 설문을 이쪽에서 거부하면 접수 건이 끝나지 않는다
+        val large = (1..5_000).joinToString(",", "[", "]") { """{"id":"$it"}""" }
 
-        QuestionSnapshot.errorOf(node(within)) shouldBe null
-        (QuestionSnapshot.errorOf(node(over)) != null) shouldBe true
+        QuestionSnapshot.errorOf(node(large)) shouldBe null
+        InformationJson.toQuestionsNode(QuestionSnapshot.serialize(node(large)))?.size() shouldBe 5_000
     }
 
     @Test
