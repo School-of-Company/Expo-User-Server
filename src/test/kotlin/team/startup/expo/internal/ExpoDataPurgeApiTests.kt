@@ -52,7 +52,9 @@ class ExpoDataPurgeApiTests : IntegrationTestSupport() {
 
     @BeforeEach
     fun setUp() {
-        jdbcTemplate.execute("TRUNCATE TABLE tb_expo_deletion, tb_trainee, tb_standard_participant, tb_admin RESTART IDENTITY CASCADE")
+        jdbcTemplate.execute(
+            "TRUNCATE TABLE tb_expo_deletion, tb_survey_answer_event, tb_trainee, tb_standard_participant, tb_admin RESTART IDENTITY CASCADE",
+        )
         // 삭제 기록은 영구히 남으므로 테스트마다 새 박람회 id를 쓴다
         expoA = UUID.randomUUID().toString()
         expoB = UUID.randomUUID().toString()
@@ -74,6 +76,9 @@ class ExpoDataPurgeApiTests : IntegrationTestSupport() {
             count(it, expoA) shouldBe 0
             count(it, expoB) shouldBe 1
         }
+        // 설문 답변 이벤트 기록은 참가자에 딸려 있지 않아 expo_id로 지운다
+        count("tb_survey_answer_event", expoA) shouldBe 0
+        count("tb_survey_answer_event", expoB) shouldBe 1
         // 설문 답변에는 expo_id가 없어 참가자를 거쳐 센다
         countAnswers("tb_trainee_survey_answer", "tb_trainee", expoA) shouldBe 0
         countAnswers("tb_standard_participant_survey_answer", "tb_standard_participant", expoA) shouldBe 0
@@ -264,6 +269,12 @@ class ExpoDataPurgeApiTests : IntegrationTestSupport() {
     private fun purge(expoId: String) = mockMvc.perform(delete("/internal/expos/$expoId").header("X-Internal-Token", INTERNAL_TOKEN))
 
     private fun seed(expoId: String) {
+        jdbcTemplate.update(
+            "INSERT INTO tb_survey_answer_event (event_id, survey_id, expo_id, status) VALUES (?, ?, ?, 'STORED')",
+            UUID.randomUUID().toString(),
+            UUID.randomUUID().toString(),
+            expoId,
+        )
         val traineeId = traineeRepository.saveAndFlush(trainee(expoId)).id!!
         val participantId = standardParticipantRepository.saveAndFlush(participant(expoId)).id!!
         jdbcTemplate.update(
