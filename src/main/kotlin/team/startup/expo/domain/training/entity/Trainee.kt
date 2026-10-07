@@ -46,4 +46,10 @@ class Trainee(
     // 명찰 출력에 쓴다. 신청 서비스가 폼에서 꺼내 넘기며 없으면 null이다
     @field:Column(length = 100)
     val school: String? = null,
+    // 신청 당시 폼 스냅샷. 신청 서비스가 검증에 쓴 폼 ID와 문항이며 없으면 null이다
+    @field:Column(name = "information_form_id", length = 36)
+    val informationFormId: String? = null,
+    @field:JdbcTypeCode(SqlTypes.JSON)
+    @field:Column(name = "information_questions", columnDefinition = "jsonb")
+    val informationQuestions: String? = null,
 )

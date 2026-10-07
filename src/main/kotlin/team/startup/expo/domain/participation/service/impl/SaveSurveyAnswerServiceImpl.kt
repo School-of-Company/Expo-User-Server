@@ -19,6 +19,7 @@ import team.startup.expo.domain.training.repository.TraineeRepository
 import team.startup.expo.domain.training.repository.TraineeSurveyAnswerRepository
 import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.util.PhoneNumbers
+import team.startup.expo.global.util.QuestionSnapshot
 
 /**
  * 같은 `eventId`는 한 번만 저장하고, 다시 오면 처음의 결과를 그대로 돌려준다. 결과 이벤트가 유실됐을 때
@@ -91,6 +92,7 @@ class SaveSurveyAnswerServiceImpl(
                             trainee = trainee,
                             answerJson = event.answerJson,
                             personalInformationStatus = event.personalInformationStatus,
+                            answerQuestions = QuestionSnapshot.serialize(event.questions),
                         ),
                     )
                 }
@@ -111,6 +113,7 @@ class SaveSurveyAnswerServiceImpl(
                             standardParticipant = participant,
                             answerJson = event.answerJson,
                             personalInformationStatus = event.personalInformationStatus,
+                            answerQuestions = QuestionSnapshot.serialize(event.questions),
                         ),
                     )
                 }

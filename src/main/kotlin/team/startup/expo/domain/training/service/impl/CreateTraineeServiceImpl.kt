@@ -16,6 +16,7 @@ import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.util.ConstraintViolations
 import team.startup.expo.global.util.InformationJson
 import team.startup.expo.global.util.PhoneNumbers
+import team.startup.expo.global.util.QuestionSnapshot
 import java.time.LocalDateTime
 
 /**
@@ -37,6 +38,7 @@ class CreateTraineeServiceImpl(
     @Transactional
     override fun execute(reqDto: CreateTraineeReqDto): CreateTraineeResDto {
         InformationJson.requireValid(reqDto.informationJson)
+        QuestionSnapshot.errorOf(reqDto.questions)?.let { throw ExpectedException(HttpStatus.BAD_REQUEST, it) }
         val digits = PhoneNumbers.digitsOnly(reqDto.phoneNumber)
         // 전화번호, 연수 번호 순서로 잡는다. 일반 참가자 등록도 같은 전화번호 lock을 잡아 두 테이블의 같은 번호가 함께 직렬화된다
         registrationLock.lockPhone(reqDto.expoId, digits)
@@ -69,6 +71,8 @@ class CreateTraineeServiceImpl(
                         applicationType = reqDto.applicationType,
                         applicationDate = LocalDateTime.now(),
                         school = reqDto.school,
+                        informationFormId = reqDto.formId,
+                        informationQuestions = QuestionSnapshot.serialize(reqDto.questions),
                     ),
                 )
             } catch (exception: DataIntegrityViolationException) {
