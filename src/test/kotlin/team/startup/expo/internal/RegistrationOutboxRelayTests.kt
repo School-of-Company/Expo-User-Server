@@ -165,8 +165,8 @@ class RegistrationOutboxRelayTests : IntegrationTestSupport() {
     companion object {
         private const val EXPO = "0199aaaa-0000-7000-8000-0000000000d1"
         private const val PHONE = "01012345678"
-        private const val REGISTERED_TOPIC = "participant.registered"
-        private const val STANDARD_CREATED_TOPIC = "standard-participant.created"
+        private const val REGISTERED_TOPIC = "user.participant.registered"
+        private const val STANDARD_CREATED_TOPIC = "user.standard-participant.created"
         private const val AWAIT_MILLIS = 30_000L
 
         @JvmStatic

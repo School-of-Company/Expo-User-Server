@@ -48,8 +48,8 @@ qr-sms-sent:
   consumer:
     auto-startup: true
 registration-events:
-  registered-topic: ${KAFKA_REGISTRATION_REGISTERED_TOPIC:participant.registered}
-  standard-created-topic: ${KAFKA_REGISTRATION_STANDARD_CREATED_TOPIC:standard-participant.created}
+  registered-topic: ${KAFKA_REGISTRATION_REGISTERED_TOPIC:user.participant.registered}
+  standard-created-topic: ${KAFKA_REGISTRATION_STANDARD_CREATED_TOPIC:user.standard-participant.created}
   relay:
     enabled: true
     interval-ms: 2000
