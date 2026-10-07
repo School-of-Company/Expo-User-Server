@@ -70,9 +70,13 @@ class ParticipantDetailApiTests : IntegrationTestSupport() {
         surveyAnswer(answered, "11111111-0000-4000-8000-000000000002", """{"1":"최근","2":"b"}""")
 
         standardDetails(EXPO)
-            .andExpect(jsonPath("$.items[?(@.participantId==$answered)].surveyAnswer.answers.1").value("최근"))
-            .andExpect(jsonPath("$.items[?(@.participantId==$answered)].surveyAnswer.questions").value(nullValue()))
-            .andExpect(jsonPath("$.items[?(@.participantId==$unanswered)].surveyAnswer").value(nullValue()))
+            // id 오름차순이라 먼저 만든 참가자가 [0]이다
+            .andExpect(jsonPath("$.items[0].participantId").value(answered))
+            .andExpect(jsonPath("$.items[0].surveyAnswer.answers.1").value("최근"))
+            .andExpect(jsonPath("$.items[0].surveyAnswer.answers.2").value("b"))
+            .andExpect(jsonPath("$.items[0].surveyAnswer.questions").value(nullValue()))
+            .andExpect(jsonPath("$.items[1].participantId").value(unanswered))
+            .andExpect(jsonPath("$.items[1].surveyAnswer").value(nullValue()))
     }
 
     @Test
