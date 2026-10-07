@@ -41,7 +41,11 @@ class GetTraineeDetailsServiceImpl(
                     phoneNumber = it.phoneNumber,
                     personalInformationStatus = it.personalInformationStatus,
                     applicationType = it.applicationType,
-                    information = InformationResDto(answers = InformationJson.toNode(it.informationJson)),
+                    information =
+                        InformationResDto(
+                            answers = InformationJson.toNode(it.informationJson),
+                            questions = InformationJson.toQuestionsNode(it.informationQuestions),
+                        ),
                 )
             }
         return DetailPageResDto(items = items, nextCursor = if (hasNext) items.last().traineeId else null)
@@ -57,7 +61,11 @@ class GetTraineeDetailsServiceImpl(
             expoId = trainee.expoId,
             name = trainee.name,
             trainingId = trainee.trainingId,
-            information = InformationResDto(answers = InformationJson.toNode(trainee.informationJson)),
+            information =
+                InformationResDto(
+                    answers = InformationJson.toNode(trainee.informationJson),
+                    questions = InformationJson.toQuestionsNode(trainee.informationQuestions),
+                ),
         )
     }
 }
