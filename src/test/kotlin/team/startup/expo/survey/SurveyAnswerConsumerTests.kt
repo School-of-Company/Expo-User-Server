@@ -162,10 +162,10 @@ class SurveyAnswerConsumerTests : IntegrationTestSupport() {
         val v1 = newEventId()
         val v2 = newEventId()
 
+        // 결과를 하나씩 기다린다. awaitRecord는 한 번에 읽은 묶음에서 일치하는 첫 건만 돌려주므로 둘을 한꺼번에 보내면 뒤의 결과를 놓친다
         send(v1)
-        send(v2, version = 2, surveyId = OTHER_SURVEY_ID, questions = QUESTIONS)
-
         awaitResult(v1)
+        send(v2, version = 2, surveyId = OTHER_SURVEY_ID, questions = QUESTIONS)
         awaitResult(v2)
         count("tb_trainee_survey_answer") shouldBe 2L
         answerSnapshotTitle(SURVEY_ID) shouldBe null
