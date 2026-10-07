@@ -66,7 +66,8 @@ class OccupationMigrationTests : IntegrationTestSupport() {
     ) {
         jdbcTemplate.update(
             "INSERT INTO tb_standard_participant (expo_id, name, phone_number, personal_information_status, application_type, " +
-                "application_date, occupation) VALUES ('0199aaaa-0000-7000-8000-0000000000a1', '참가자', ?, true, 'PRE', now(), ?)",
+                "application_date, occupation, code) VALUES ('0199aaaa-0000-7000-8000-0000000000a1', '참가자', ?, true, 'PRE', now(), ?, " +
+                "left(replace(gen_random_uuid()::text, '-', ''), 22))",
             phone,
             occupation,
         )
