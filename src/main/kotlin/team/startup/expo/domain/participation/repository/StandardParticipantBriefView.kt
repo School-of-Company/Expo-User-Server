@@ -4,6 +4,6 @@ package team.startup.expo.domain.participation.repository
 interface StandardParticipantBriefView {
     val id: Long
     val name: String
-    val phoneNumber: String
+    val phoneNumber: String?
     val personalInformationStatus: Boolean
 }

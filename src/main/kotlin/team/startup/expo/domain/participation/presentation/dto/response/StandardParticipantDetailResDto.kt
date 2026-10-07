@@ -7,7 +7,7 @@ import team.startup.expo.global.dto.InformationResDto
 data class StandardParticipantDetailResDto(
     val participantId: Long,
     val name: String,
-    val phoneNumber: String,
+    val phoneNumber: String?,
     val personalInformationStatus: Boolean,
     val applicationType: ApplicationType,
     val information: InformationResDto,

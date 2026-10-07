@@ -14,6 +14,14 @@ interface StandardParticipantRepository : JpaRepository<StandardParticipant, Lon
         phoneNumber: String,
     ): StandardParticipant?
 
+    /** 대표자에 딸린 동행자를 등록 순서대로 읽는다. */
+    fun findAllByRepresentativeIdOrderById(representativeId: Long): List<StandardParticipant>
+
+    fun findByIdAndExpoId(
+        id: Long,
+        expoId: String,
+    ): StandardParticipant?
+
     /** 숫자만 남겨 비교한다. `idx_standard_participant_expo_phone_digits` 표현식 인덱스와 같은 식이어야 인덱스를 탄다. */
     @Query(
         value =

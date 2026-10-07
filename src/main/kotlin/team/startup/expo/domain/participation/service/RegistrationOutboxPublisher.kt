@@ -10,6 +10,7 @@ import team.startup.expo.domain.participation.presentation.dto.response.Registra
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantCreatedEvent
 import team.startup.expo.domain.participation.repository.RegistrationOutboxEventRepository
 import team.startup.expo.global.kafka.RegistrationEventProperties
+import tools.jackson.core.type.TypeReference
 import tools.jackson.databind.json.JsonMapper
 import java.time.LocalDateTime
 import java.util.concurrent.TimeUnit
@@ -52,8 +53,18 @@ class RegistrationOutboxPublisher(
     private fun send(event: RegistrationOutboxEvent) {
         when (event.eventType) {
             RegistrationEventType.REGISTERED -> {
+                val participants =
+                    event.participantsJson?.let { jsonMapper.readValue(it, object : TypeReference<List<RegisteredParticipant>>() {}) }
                 val message =
-                    RegistrationCompletedEvent(event.eventId, event.expoId, event.participationType, event.participantId, event.phoneNumber)
+                    RegistrationCompletedEvent(
+                        eventId = event.eventId,
+                        expoId = event.expoId,
+                        participationType = event.participationType,
+                        id = event.participantId,
+                        phoneNumber = event.phoneNumber,
+                        representativeId = if (participants != null) event.participantId else null,
+                        participants = participants,
+                    )
                 publish(properties.registeredTopic, "${event.participationType}:${event.participantId}", message)
             }
 

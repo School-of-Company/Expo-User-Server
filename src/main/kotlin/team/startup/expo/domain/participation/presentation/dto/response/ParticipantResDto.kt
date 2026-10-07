@@ -4,6 +4,6 @@ package team.startup.expo.domain.participation.presentation.dto.response
 data class ParticipantResDto(
     val id: Long,
     val name: String,
-    val phoneNumber: String,
+    val phoneNumber: String?,
     val informationStatus: Boolean,
 )

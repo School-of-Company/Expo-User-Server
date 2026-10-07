@@ -5,6 +5,7 @@ import team.startup.expo.domain.participation.entity.ParticipationType
 import team.startup.expo.domain.participation.entity.RegistrationEventType
 import team.startup.expo.domain.participation.entity.RegistrationOutboxEvent
 import team.startup.expo.domain.participation.repository.RegistrationOutboxEventRepository
+import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
 
 /**
@@ -14,18 +15,27 @@ import java.util.UUID
 @Component
 class RegistrationOutboxWriter(
     private val registrationOutboxEventRepository: RegistrationOutboxEventRepository,
+    private val jsonMapper: JsonMapper,
 ) {
     fun registered(
         expoId: String,
         participationType: ParticipationType,
         participantId: Long,
         phoneNumber: String,
-    ) = record(RegistrationEventType.REGISTERED, expoId, participationType, participantId, phoneNumber)
+        participants: List<RegisteredParticipant>? = null,
+    ) = record(
+        RegistrationEventType.REGISTERED,
+        expoId,
+        participationType,
+        participantId,
+        phoneNumber,
+        participants?.let(jsonMapper::writeValueAsString),
+    )
 
     fun standardCreated(
         expoId: String,
         participantId: Long,
-        phoneNumber: String,
+        phoneNumber: String? = null,
     ) = record(RegistrationEventType.STANDARD_CREATED, expoId, ParticipationType.STANDARD, participantId, phoneNumber)
 
     private fun record(
@@ -33,7 +43,8 @@ class RegistrationOutboxWriter(
         expoId: String,
         participationType: ParticipationType,
         participantId: Long,
-        phoneNumber: String,
+        phoneNumber: String?,
+        participantsJson: String? = null,
     ) {
         registrationOutboxEventRepository.save(
             RegistrationOutboxEvent(
@@ -43,6 +54,7 @@ class RegistrationOutboxWriter(
                 participationType = participationType,
                 participantId = participantId,
                 phoneNumber = phoneNumber,
+                participantsJson = participantsJson,
             ),
         )
     }

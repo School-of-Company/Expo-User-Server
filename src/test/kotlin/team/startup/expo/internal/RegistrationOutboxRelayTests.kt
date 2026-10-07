@@ -79,6 +79,14 @@ class RegistrationOutboxRelayTests : IntegrationTestSupport() {
         registered.get("participationType").asString() shouldBe "STANDARD"
         registered.get("id").asLong() shouldBe participantId
         registered.get("phoneNumber").asString() shouldBe PHONE
+        registered.get("representativeId").asLong() shouldBe participantId
+        registered.get("participants").size() shouldBe 1
+        registered.get("participants")[0].get("id").asLong() shouldBe participantId
+        registered
+            .get("participants")[0]
+            .get("code")
+            .asString()
+            .length shouldBe 22
         standardCreated.get("eventId").asString() shouldBe outboxIds[1]
         standardCreated.get("expoId").asString() shouldBe EXPO
         standardCreated.get("participantId").asLong() shouldBe participantId
@@ -107,6 +115,9 @@ class RegistrationOutboxRelayTests : IntegrationTestSupport() {
         registered.get("eventId").asString() shouldBe eventId
         registered.get("participationType").asString() shouldBe "TRAINEE"
         registered.get("phoneNumber").asString() shouldBe PHONE
+        // 연수자는 동행자가 없어 두 필드를 싣지 않는다
+        registered.has("representativeId") shouldBe false
+        registered.has("participants") shouldBe false
     }
 
     private fun register(body: String) {
