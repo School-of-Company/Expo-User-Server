@@ -38,6 +38,12 @@ interface StandardParticipantRepository : JpaRepository<StandardParticipant, Lon
         ids: Collection<Long>,
     ): List<StandardParticipantBriefView>
 
+    /** 참가자 엔티티(`information_json` 포함)를 읽지 않고 그 박람회의 참가자인지만 확인한다. */
+    fun existsByIdAndExpoId(
+        id: Long,
+        expoId: String,
+    ): Boolean
+
     fun findNamesByExpoIdAndIdIn(
         expoId: String,
         ids: Collection<Long>,

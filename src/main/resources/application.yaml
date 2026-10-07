@@ -41,6 +41,12 @@ clients:
   expo:
     url: ${EXPO_URL:}
     internal-token: ${EXPO_INTERNAL_TOKEN}
+qr-sms-sent:
+  topic: ${KAFKA_QR_SMS_SENT_TOPIC:notification.qr-sms.sent}
+  dead-letter-topic: ${KAFKA_QR_SMS_SENT_DEAD_LETTER_TOPIC:notification.qr-sms.sent.dlt}
+  group-id: ${KAFKA_QR_SMS_SENT_GROUP_ID:expo-user-server.qr-sms-sent}
+  consumer:
+    auto-startup: true
 registration-events:
   registered-topic: ${KAFKA_REGISTRATION_REGISTERED_TOPIC:participant.registered}
   standard-created-topic: ${KAFKA_REGISTRATION_STANDARD_CREATED_TOPIC:standard-participant.created}
