@@ -1,6 +1,7 @@
 package team.startup.expo.domain.training.service.impl
 
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import team.startup.expo.domain.participation.service.ExpoDeletionGuard
@@ -11,9 +12,11 @@ import team.startup.expo.domain.training.presentation.dto.request.ResolveOrCreat
 import team.startup.expo.domain.training.presentation.dto.response.ResolveOrCreateTraineeResDto
 import team.startup.expo.domain.training.repository.TraineeRepository
 import team.startup.expo.domain.training.service.ResolveOrCreateTraineeService
+import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.util.ConstraintViolations
 import team.startup.expo.global.util.InformationJson
 import team.startup.expo.global.util.PhoneNumbers
+import team.startup.expo.global.util.QuestionSnapshot
 import java.time.LocalDateTime
 
 /**
@@ -35,6 +38,7 @@ class ResolveOrCreateTraineeServiceImpl(
     @Transactional
     override fun execute(reqDto: ResolveOrCreateTraineeReqDto): ResolveOrCreateTraineeResDto {
         InformationJson.requireValid(reqDto.informationJson)
+        QuestionSnapshot.errorOf(reqDto.questions)?.let { throw ExpectedException(HttpStatus.BAD_REQUEST, it) }
         val digits = PhoneNumbers.digitsOnly(reqDto.phoneNumber)
         // 이미 있는 연수자를 돌려주는 경로도 삭제 중인 박람회의 곧 사라질 ID를 주지 않도록 가장 먼저 확인한다
         expoDeletionGuard.requireNotDeleted(reqDto.expoId)
@@ -60,6 +64,8 @@ class ResolveOrCreateTraineeServiceImpl(
                         applicationType = ApplicationType.PRE,
                         applicationDate = LocalDateTime.now(),
                         school = reqDto.school,
+                        informationFormId = reqDto.formId,
+                        informationQuestions = QuestionSnapshot.serialize(reqDto.questions),
                     ),
                 )
             } catch (exception: DataIntegrityViolationException) {

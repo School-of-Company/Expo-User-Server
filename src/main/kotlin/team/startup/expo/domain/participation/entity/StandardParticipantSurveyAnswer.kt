@@ -37,4 +37,8 @@ class StandardParticipantSurveyAnswer(
     val answerJson: String,
     @field:Column(name = "personal_information_status", nullable = false)
     val personalInformationStatus: Boolean,
+    // 제출 당시 설문 문항 스냅샷. v1 이벤트처럼 스냅샷 없이 저장된 행은 null이다
+    @field:JdbcTypeCode(SqlTypes.JSON)
+    @field:Column(name = "answer_questions", columnDefinition = "jsonb")
+    val answerQuestions: String? = null,
 )

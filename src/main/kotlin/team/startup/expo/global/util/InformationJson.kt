@@ -44,4 +44,11 @@ object InformationJson {
             }
         return if (inner.isObject || inner.isArray) inner else node
     }
+
+    /** 저장된 문항 스냅샷을 응답용 노드로 읽는다. 스냅샷 없이 저장된 행(`null`)이거나 배열로 읽을 수 없으면 `null`이다. */
+    fun toQuestionsNode(json: String?): JsonNode? {
+        if (json.isNullOrBlank()) return null
+        val node = toNode(json)
+        return node.takeIf { it.isArray }
+    }
 }

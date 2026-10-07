@@ -14,7 +14,7 @@ interface StandardParticipantSurveyAnswerRepository : JpaRepository<StandardPart
 
     /** 참가자별 답변을 `id` 오름차순으로 읽는다. 호출자는 같은 참가자의 마지막(가장 최근) 답변을 쓴다. */
     @Query(
-        "select a.standardParticipant.id as participantId, a.answerJson as answerJson " +
+        "select a.standardParticipant.id as participantId, a.answerJson as answerJson, a.answerQuestions as answerQuestions " +
             "from StandardParticipantSurveyAnswer a where a.standardParticipant.id in :participantIds order by a.id",
     )
     fun findAnswersByParticipantIds(
