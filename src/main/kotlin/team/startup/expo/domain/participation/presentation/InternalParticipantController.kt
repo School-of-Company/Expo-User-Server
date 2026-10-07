@@ -87,7 +87,7 @@ class InternalParticipantController(
     @Operation(
         summary = "QR 문자 발송 횟수 증가",
         description =
-            "QR 문자를 보낸 뒤 일반 참가자의 발송 횟수를 1 올립니다. 같은 eventId는 한 번만 올리며 다시 불러도 204입니다. " +
+            "QR 문자를 보낸 뒤 일반 참가자의 발송 횟수를 1 올립니다. eventId가 있으면 같은 값은 한 번만 올리며 다시 불러도 204입니다. " +
                 "참가자가 없으면 404, 연수자는 400, eventId를 다른 참가자에 썼으면 409입니다.",
     )
     @PostMapping("/participants/sms-try")

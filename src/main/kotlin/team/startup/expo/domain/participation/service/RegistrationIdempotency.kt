@@ -14,12 +14,13 @@ import java.security.MessageDigest
  * 결과 기록은 등록과 같은 트랜잭션에서 확정된다.
  *
  * 같은 키가 다른 내용으로 오면 409다. 내용은 `requestId`를 뺀 요청 본문과 응답자 구분의 해시로 비교한다.
- * 같은 키의 요청은 [ParticipantRegistrationLock]으로 직렬화한다. 첫 요청이 실패한(예외로 끝난) 키는 기록이
+ * 같은 키의 요청은 [ParticipantRegistrationLock]으로 직렬화하고, 삭제 중이거나 삭제된 박람회는 [ExpoDeletionGuard]로 거부한다. 첫 요청이 실패한(예외로 끝난) 키는 기록이
  * 남지 않으므로 다시 처리한다.
  */
 @Component
 class RegistrationIdempotency(
     private val registrationRequestRepository: RegistrationRequestRepository,
+    private val expoDeletionGuard: ExpoDeletionGuard,
     private val registrationLock: ParticipantRegistrationLock,
     private val jsonMapper: JsonMapper,
 ) {
@@ -33,6 +34,9 @@ class RegistrationIdempotency(
     ): Registration {
         if (requestId == null) return action()
 
+        // 기록을 읽어 돌려주기만 하는 재시도는 삭제 트리거를 타지 않는다. 삭제와 겹치면 곧 사라질 참가자 ID를 돌려주게 되므로
+        // 요청 기록을 읽기 전에 삭제를 기다리고 삭제 기록을 확인한다. 삭제 lock이 요청 키 lock보다 먼저다
+        expoDeletionGuard.requireNotDeleted(expoId)
         registrationLock.lockRequest(requestId)
         val fingerprint = fingerprint(participationType, body)
         registrationRequestRepository.findById(requestId).orElse(null)?.let {
