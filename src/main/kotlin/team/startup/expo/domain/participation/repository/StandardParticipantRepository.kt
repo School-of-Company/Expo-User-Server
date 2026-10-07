@@ -1,5 +1,6 @@
 package team.startup.expo.domain.participation.repository
 
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
@@ -24,6 +25,18 @@ interface StandardParticipantRepository : JpaRepository<StandardParticipant, Lon
         @Param("expoId") expoId: String,
         @Param("digits") digits: String,
     ): List<StandardParticipant>
+
+    /** `id` 오름차순으로 [cursor]보다 큰 행을 읽는다. 다음 페이지가 있는지 알 수 있도록 호출자가 한 행 더 요청한다. */
+    fun findByExpoIdAndIdGreaterThanOrderById(
+        expoId: String,
+        cursor: Long,
+        pageable: Pageable,
+    ): List<StandardParticipant>
+
+    fun findBriefsByExpoIdAndIdIn(
+        expoId: String,
+        ids: Collection<Long>,
+    ): List<StandardParticipantBriefView>
 
     fun findNamesByExpoIdAndIdIn(
         expoId: String,
