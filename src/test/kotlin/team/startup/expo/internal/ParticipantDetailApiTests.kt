@@ -235,6 +235,33 @@ class ParticipantDetailApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `문자 수신 번호는 본인 번호가 있으면 본인 번호이고 없는 동행자는 대표자 번호이다`() {
+        val representative = standard(EXPO, "01000000001", "대표")
+        val companion = companion(EXPO, "동행", representative)
+        val otherRepresentative = standard(EXPO, "01000000002", "다른대표")
+        val otherCompanion = companion(EXPO, "다른동행", otherRepresentative)
+
+        briefs(EXPO, listOf(companion, representative, otherCompanion))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].participantId").value(companion))
+            .andExpect(jsonPath("$[0].phoneNumber").doesNotExist())
+            .andExpect(jsonPath("$[0].notificationPhoneNumber").value("01000000001"))
+            .andExpect(jsonPath("$[1].phoneNumber").value("01000000001"))
+            .andExpect(jsonPath("$[1].notificationPhoneNumber").value("01000000001"))
+            .andExpect(jsonPath("$[2].notificationPhoneNumber").value("01000000002"))
+    }
+
+    @Test
+    fun `대표자 없이 번호도 없는 참가자의 문자 수신 번호는 null이다`() {
+        val orphan = companion(EXPO, "혼자", null)
+
+        briefs(EXPO, listOf(orphan))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].phoneNumber").doesNotExist())
+            .andExpect(jsonPath("$[0].notificationPhoneNumber").doesNotExist())
+    }
+
+    @Test
     fun `일괄 조회에 없는 id나 다른 박람회의 id가 섞이면 조용히 빼지 않고 404이다`() {
         val a = standard(EXPO, "01000000001", "가")
         val other = standard(OTHER_EXPO, "01000000002", "다른행사")
@@ -307,6 +334,24 @@ class ParticipantDetailApiTests : IntegrationTestSupport() {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"expoId":"$expoId","participantIds":[${ids.joinToString(",")}]}"""),
         )
+
+    private fun companion(
+        expoId: String,
+        name: String,
+        representativeId: Long?,
+    ): Long =
+        standardParticipantRepository
+            .save(
+                StandardParticipant(
+                    expoId = expoId,
+                    name = name,
+                    phoneNumber = null,
+                    personalInformationStatus = true,
+                    applicationType = ApplicationType.PRE,
+                    applicationDate = LocalDateTime.of(2026, 10, 1, 10, 0),
+                    representativeId = representativeId,
+                ),
+            ).id!!
 
     private fun standard(
         expoId: String,
