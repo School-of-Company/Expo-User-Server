@@ -74,6 +74,61 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `응답에 이번 문자에 담은 참가자 ID를 돌려주고 code는 싣지 않는다`() {
+        val first = register(ALICE, BOB).andExpect(status().isCreated).andExpect(jsonPath("$.code").doesNotExist()).andReturn()
+        val ids = jdbcTemplate.queryForList("SELECT id FROM tb_standard_participant ORDER BY id", Long::class.java)
+        mapper
+            .readTree(first.response.contentAsString)
+            .path("participantIds")
+            .toList()
+            .map { it.asLong() } shouldBe ids
+
+        // 새 동행자만 더하면 그 동행자만, 같은 요청을 다시 보내면 기존 전원이다
+        val added = register(ALICE, BOB, CAROL).andReturn()
+        mapper
+            .readTree(added.response.contentAsString)
+            .path("participantIds")
+            .toList()
+            .map { it.asLong() } shouldBe
+            listOf(jdbcTemplate.queryForObject("SELECT id FROM tb_standard_participant WHERE name = '${CAROL.name}'", Long::class.java))
+        val resent = register(ALICE, BOB, CAROL).andReturn()
+        mapper
+            .readTree(resent.response.contentAsString)
+            .path("participantIds")
+            .toList()
+            .map { it.asLong() } shouldBe
+            jdbcTemplate.queryForList("SELECT id FROM tb_standard_participant ORDER BY id", Long::class.java)
+    }
+
+    @Test
+    fun `같은 requestId의 재시도는 처음의 참가자 ID 목록을 그대로 돌려준다`() {
+        val requestId = UUID.randomUUID().toString()
+        val first =
+            register(ALICE, BOB, requestId = requestId)
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response.contentAsString
+
+        val retry =
+            register(ALICE, BOB, requestId = requestId)
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response.contentAsString
+
+        mapper
+            .readTree(retry)
+            .path("participantIds")
+            .toList()
+            .map { it.asLong() } shouldBe
+            mapper
+                .readTree(first)
+                .path("participantIds")
+                .toList()
+                .map { it.asLong() }
+        mapper.readTree(first).path("participantIds").size() shouldBe 2
+    }
+
+    @Test
     fun `새 동행자만 만들고 그 동행자의 링크만 문자에 담는다`() {
         register(ALICE).andExpect(status().isCreated)
         val before = codes()

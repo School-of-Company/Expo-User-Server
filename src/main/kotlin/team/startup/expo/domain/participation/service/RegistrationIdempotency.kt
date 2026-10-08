@@ -6,6 +6,7 @@ import team.startup.expo.domain.participation.entity.ParticipationType
 import team.startup.expo.domain.participation.entity.RegistrationRequest
 import team.startup.expo.domain.participation.repository.RegistrationRequestRepository
 import team.startup.expo.global.exception.ExpectedException
+import tools.jackson.core.type.TypeReference
 import tools.jackson.databind.json.JsonMapper
 import java.security.MessageDigest
 
@@ -43,7 +44,10 @@ class RegistrationIdempotency(
             if (it.fingerprint != fingerprint) {
                 throw ExpectedException(HttpStatus.CONFLICT, "같은 요청 키로 다른 내용의 등록을 보낼 수 없습니다.")
             }
-            return Registration(it.participantId, it.phoneNumber, it.created)
+            val participantIds =
+                it.participantIds?.let { json -> jsonMapper.readValue(json, object : TypeReference<List<Long>>() {}) }
+                    ?: listOf(it.participantId)
+            return Registration(it.participantId, it.phoneNumber, it.created, participantIds)
         }
 
         val registration = action()
@@ -56,6 +60,7 @@ class RegistrationIdempotency(
                 participantId = registration.id,
                 phoneNumber = registration.phoneNumber,
                 created = registration.created,
+                participantIds = jsonMapper.writeValueAsString(registration.participantIds),
             ),
         )
         return registration
