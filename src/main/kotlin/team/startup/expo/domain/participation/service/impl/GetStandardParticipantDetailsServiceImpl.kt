@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional
 import team.startup.expo.domain.participation.presentation.dto.request.GetStandardParticipantBriefsReqDto
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantBriefResDto
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantDetailResDto
+import team.startup.expo.domain.participation.repository.StandardParticipantBriefView
 import team.startup.expo.domain.participation.repository.StandardParticipantRepository
 import team.startup.expo.domain.participation.repository.StandardParticipantSurveyAnswerRepository
 import team.startup.expo.domain.participation.service.GetStandardParticipantDetailsService
@@ -87,16 +88,32 @@ class GetStandardParticipantDetailsServiceImpl(
             val rest = if (missing.size > MAX_REPORTED_IDS) " 외 ${missing.size - MAX_REPORTED_IDS}개" else ""
             throw ExpectedException(HttpStatus.NOT_FOUND, "요청한 참가자 중 찾을 수 없는 참가자가 있습니다. (id: $shown$rest)")
         }
+        val representativePhoneNumbers = representativePhoneNumbers(reqDto.expoId, found.values)
         return ids.map {
             val view = found.getValue(it)
             StandardParticipantBriefResDto(
                 participantId = view.id,
                 name = view.name,
                 phoneNumber = view.phoneNumber,
+                // 입장 기록 응답과 같은 규칙이다: 본인 번호, 없으면 대표자 번호
+                notificationPhoneNumber = view.phoneNumber ?: view.representativeId?.let(representativePhoneNumbers::get),
                 personalInformationStatus = view.personalInformationStatus,
             )
         }
     }
+
+    /** 본인 번호가 없는 참가자(동행자)의 대표자 번호를 한 번에 읽는다. 대표자는 같은 박람회에 있다. */
+    private fun representativePhoneNumbers(
+        expoId: String,
+        views: Collection<StandardParticipantBriefView>,
+    ): Map<Long, String?> =
+        views
+            .filter { it.phoneNumber == null }
+            .mapNotNull { it.representativeId }
+            .distinct()
+            .chunked(QUERY_CHUNK_SIZE)
+            .flatMap { standardParticipantRepository.findBriefsByExpoIdAndIdIn(expoId, it) }
+            .associate { it.id to it.phoneNumber }
 
     private companion object {
         const val QUERY_CHUNK_SIZE = 1_000
