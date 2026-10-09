@@ -74,7 +74,7 @@ class CreateStandardParticipantServiceImpl(
             created = true,
             participantIds = saved.map { it.id!! },
             createdIds = saved.map { it.id!! },
-            participants = saved.map { RegisteredParticipant(it.id!!, it.code) },
+            participants = saved.map { RegisteredParticipant(it.id!!, it.code, it.name) },
         )
     }
 
@@ -98,7 +98,7 @@ class CreateStandardParticipantServiceImpl(
             created = created.isNotEmpty(),
             participantIds = texted.map { it.id!! },
             createdIds = created.map { it.id!! },
-            participants = texted.map { RegisteredParticipant(it.id!!, it.code) },
+            participants = texted.map { RegisteredParticipant(it.id!!, it.code, it.name) },
         )
     }
 
