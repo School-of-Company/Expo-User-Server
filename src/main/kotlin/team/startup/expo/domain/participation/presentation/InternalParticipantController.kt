@@ -17,6 +17,7 @@ import team.startup.expo.domain.participation.presentation.dto.request.IncreaseS
 import team.startup.expo.domain.participation.presentation.dto.request.RecordEntryReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveStandardParticipantReqDto
+import team.startup.expo.domain.participation.presentation.dto.request.VerifyStandardParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.response.CreateStandardParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.GetSurveyAnswerEventResDto
 import team.startup.expo.domain.participation.presentation.dto.response.RecordEntryResDto
@@ -30,6 +31,7 @@ import team.startup.expo.domain.participation.service.RecordEntryService
 import team.startup.expo.domain.participation.service.RegisterStandardParticipantService
 import team.startup.expo.domain.participation.service.ResolveParticipantService
 import team.startup.expo.domain.participation.service.ResolveStandardParticipantService
+import team.startup.expo.domain.participation.service.VerifyStandardParticipantService
 
 /**
  * 서비스 간 호출 전용이다. `X-Internal-Token`이 필요하며 gateway에 라우팅하지 않는다.
@@ -45,12 +47,25 @@ class InternalParticipantController(
     private val registerStandardParticipantService: RegisterStandardParticipantService,
     private val increaseSmsTryTimeService: IncreaseSmsTryTimeService,
     private val recordEntryService: RecordEntryService,
+    private val verifyStandardParticipantService: VerifyStandardParticipantService,
 ) {
     @Operation(summary = "일반 참가자 id 조회", description = "박람회 id와 전화번호로 일반 참가자 id를 찾습니다. 없으면 404입니다.")
     @PostMapping("/standard-participants/resolve")
     fun resolveStandardParticipant(
         @Valid @RequestBody reqDto: ResolveStandardParticipantReqDto,
     ): ResolveStandardParticipantResDto = resolveStandardParticipantService.execute(reqDto)
+
+    @Operation(
+        summary = "일반 참가자 QR 확인",
+        description =
+            "박람회 id, 참가자 id, code가 맞는지만 확인합니다. 맞으면 204이고 입장·출석은 기록하지 않습니다. " +
+                "참가자가 없거나 다른 박람회의 참가자이거나 code가 다르면 입장 기록과 같은 404입니다.",
+    )
+    @PostMapping("/standard-participants/verify")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun verifyStandardParticipant(
+        @Valid @RequestBody reqDto: VerifyStandardParticipantReqDto,
+    ) = verifyStandardParticipantService.execute(reqDto)
 
     @Operation(summary = "일반 참가자 이름 일괄 조회", description = "요청한 id를 모두 돌려주거나, 없는 id나 다른 박람회의 참가자가 있으면 404입니다.")
     @PostMapping("/standard-participants/names")
