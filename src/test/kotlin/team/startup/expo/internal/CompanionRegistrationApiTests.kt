@@ -55,6 +55,8 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
         val participants = registeredParticipants().single()
         participants.map { it.path("id").asLong() } shouldBe rows.map { it["id"] }
         participants.map { it.path("code").asString() } shouldBe rows.map { it["code"] }
+        // 문자의 링크 라벨에 쓰는 이름은 대표자와 동행자 모두 싣는다
+        participants.map { it.path("name").asString() } shouldBe listOf(ALICE.name, BOB.name, CAROL.name)
         count("tb_registration_outbox WHERE event_type = 'STANDARD_CREATED'") shouldBe 3
     }
 
@@ -70,6 +72,7 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
         val events = registeredParticipants()
         events.size shouldBe 2
         events.last().map { it.path("code").asString() } shouldBe codes
+        events.last().map { it.path("name").asString() } shouldBe listOf(ALICE.name, BOB.name)
         count("tb_registration_outbox WHERE event_type = 'STANDARD_CREATED'") shouldBe 2
     }
 
@@ -142,6 +145,7 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
         participants.size shouldBe 1
         participants[0].path("id").asLong() shouldBe added["id"]
         participants[0].path("code").asString() shouldBe added["code"]
+        participants[0].path("name").asString() shouldBe BOB.name
     }
 
     @Test
