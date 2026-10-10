@@ -38,8 +38,20 @@ class BootstrapAdminTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `승인된 관리자가 없을 때 설정한 닉네임으로 가입하면 바로 관리자가 되어 로그인할 수 있다`() {
+    fun `설정한 닉네임으로 가입해도 가입 직후에는 승인하지 않고 승인 대기다`() {
         signUp("first-admin", "first@gsm.hs.kr", "01011110001").andExpect(status().isCreated)
+
+        val admin = adminRepository.findByNickname("first-admin")!!
+        admin.status shouldBe Status.PENDING
+        admin.authority shouldBe Authority.ROLE_STANDARD
+        signIn("first-admin").andExpect(status().isForbidden)
+    }
+
+    @Test
+    fun `기동할 때 설정한 닉네임의 승인 대기 계정을 관리자로 승인하고 그 계정으로 로그인한다`() {
+        signUp("first-admin", "first@gsm.hs.kr", "01011110001").andExpect(status().isCreated)
+
+        runner.run(DefaultApplicationArguments())
 
         val admin = adminRepository.findByNickname("first-admin")!!
         admin.status shouldBe Status.ACCEPTED
@@ -48,33 +60,17 @@ class BootstrapAdminTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `설정하지 않은 닉네임은 평소처럼 승인 대기다`() {
-        signUp("someone", "someone@gsm.hs.kr", "01011110002").andExpect(status().isCreated)
-
-        val admin = adminRepository.findByNickname("someone")!!
-        admin.status shouldBe Status.PENDING
-        admin.authority shouldBe Authority.ROLE_STANDARD
-        signIn("someone").andExpect(status().isForbidden)
-    }
-
-    @Test
-    fun `이미 승인된 관리자가 있으면 설정한 닉네임으로 가입해도 승인 대기다`() {
-        adminRepository.save(admin("existing", "existing@gsm.hs.kr", "01011110003").apply { accept() })
-
-        signUp("first-admin", "first@gsm.hs.kr", "01011110001").andExpect(status().isCreated)
-
-        adminRepository.findByNickname("first-admin")!!.status shouldBe Status.PENDING
-    }
-
-    @Test
-    fun `기동할 때 설정한 닉네임으로 이미 가입해 둔 계정을 승인한다`() {
+    fun `설정하지 않은 닉네임의 승인 대기 계정은 승인하지 않는다`() {
         adminRepository.save(admin("first-admin", "first@gsm.hs.kr", "01011110001"))
         adminRepository.save(admin("other", "other@gsm.hs.kr", "01011110002"))
 
         runner.run(DefaultApplicationArguments())
 
         adminRepository.findByNickname("first-admin")!!.status shouldBe Status.ACCEPTED
-        adminRepository.findByNickname("other")!!.status shouldBe Status.PENDING
+        val other = adminRepository.findByNickname("other")!!
+        other.status shouldBe Status.PENDING
+        other.authority shouldBe Authority.ROLE_STANDARD
+        signIn("other").andExpect(status().isForbidden)
     }
 
     @Test
@@ -85,6 +81,29 @@ class BootstrapAdminTests : IntegrationTestSupport() {
         runner.run(DefaultApplicationArguments())
 
         adminRepository.findByNickname("first-admin")!!.status shouldBe Status.PENDING
+    }
+
+    @Test
+    fun `설정한 닉네임의 계정이 없으면 아무것도 하지 않고 기동은 계속된다`() {
+        adminRepository.save(admin("other", "other@gsm.hs.kr", "01011110002"))
+
+        runner.run(DefaultApplicationArguments())
+
+        adminRepository.findByNickname("other")!!.status shouldBe Status.PENDING
+        adminRepository.count() shouldBe 1L
+    }
+
+    @Test
+    fun `여러 번 기동해도 결과가 같고 나중에 가입한 계정은 승인하지 않는다`() {
+        adminRepository.save(admin("first-admin", "first@gsm.hs.kr", "01011110001"))
+
+        repeat(2) { runner.run(DefaultApplicationArguments()) }
+        // 첫 관리자가 생긴 뒤에는 설정이 남아 있어도 다른 계정을 승인하지 않는다
+        adminRepository.save(admin("late", "late@gsm.hs.kr", "01011110002"))
+        runner.run(DefaultApplicationArguments())
+
+        adminRepository.findByNickname("first-admin")!!.status shouldBe Status.ACCEPTED
+        adminRepository.findByNickname("late")!!.status shouldBe Status.PENDING
     }
 
     private fun admin(
