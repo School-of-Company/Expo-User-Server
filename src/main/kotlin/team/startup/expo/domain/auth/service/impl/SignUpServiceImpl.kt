@@ -9,12 +9,14 @@ import team.startup.expo.domain.auth.presentation.dto.request.SignUpReqDto
 import team.startup.expo.domain.auth.service.SignUpService
 import team.startup.expo.domain.user.entity.Admin
 import team.startup.expo.domain.user.repository.AdminRepository
+import team.startup.expo.domain.user.service.BootstrapAdminService
 import team.startup.expo.global.exception.ExpectedException
 
 @Service
 class SignUpServiceImpl(
     private val adminRepository: AdminRepository,
     private val passwordEncoder: PasswordEncoder,
+    private val bootstrapAdminService: BootstrapAdminService,
 ) : SignUpService {
     @Transactional
     override fun execute(reqDto: SignUpReqDto) {
@@ -30,7 +32,9 @@ class SignUpServiceImpl(
 
         try {
             // 확인과 저장 사이에 같은 값이 들어오면 UNIQUE 제약이 막는다. 커밋 시점이 아니라 여기서 409로 바꾸기 위해 즉시 반영한다.
-            adminRepository.saveAndFlush(reqDto.toEntity(requireNotNull(passwordEncoder.encode(reqDto.password))))
+            val admin = adminRepository.saveAndFlush(reqDto.toEntity(requireNotNull(passwordEncoder.encode(reqDto.password))))
+            // 빈 DB의 첫 가입이 설정한 닉네임이면 승인 대기 없이 관리자가 된다. 아니면 평소처럼 승인 대기다.
+            bootstrapAdminService.promoteIfFirst(admin)
         } catch (e: DataIntegrityViolationException) {
             throw ExpectedException(HttpStatus.CONFLICT, "이미 존재하는 회원 정보입니다.")
         }
