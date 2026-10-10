@@ -31,6 +31,8 @@ jwt:
   refresh-token-ttl: 7d
 internal:
   token: ${INTERNAL_TOKEN}
+bootstrap-admin:
+  nickname: ${BOOTSTRAP_ADMIN_NICKNAME:}
 survey-answer:
   submit-topic: ${KAFKA_SURVEY_ANSWER_SUBMIT_TOPIC:survey.answer.submit}
   result-topic: ${KAFKA_SURVEY_ANSWER_RESULT_TOPIC:survey.answer.result}

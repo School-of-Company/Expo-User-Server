@@ -19,6 +19,8 @@ interface AdminRepository : JpaRepository<Admin, Long> {
 
     fun findByStatus(status: Status): List<Admin>
 
+    fun existsByStatus(status: Status): Boolean
+
     /**
      * 행을 잠그고 조회한다. 승인, 거절, 탈퇴가 같은 관리자에 동시에 일어날 때 서로의 결과를 보고 판단하도록
      * 직렬화한다. 반드시 트랜잭션 안에서 호출해야 한다.
