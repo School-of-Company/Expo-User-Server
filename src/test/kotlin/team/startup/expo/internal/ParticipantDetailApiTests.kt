@@ -316,7 +316,7 @@ class ParticipantDetailApiTests : IntegrationTestSupport() {
         standard(EXPO, "01000000001", "가나다")
         val literal = standard(EXPO, "01000000002", "100%_")
 
-        searchIds("q=%25") shouldBe (listOf(literal))
+        searchIds("q=%") shouldBe (listOf(literal))
         searchIds("q=_") shouldBe (listOf(literal))
     }
 
