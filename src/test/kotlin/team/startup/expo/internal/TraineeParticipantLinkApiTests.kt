@@ -109,6 +109,35 @@ class TraineeParticipantLinkApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `연수원 아이디 없이 이은 연수자에 처음 값이 오면 채우고 그 뒤 다른 값으로는 바꾸지 않는다`() {
+        val representative = participant("대표", PHONE)
+        val traineeId = traineeIdOf(link(EXPO, representative).andExpect(status().isOk))
+        trainingIdOf(traineeId) shouldBe null
+
+        link(EXPO, representative, trainingId = "T-1")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.traineeId").value(traineeId))
+            .andExpect(jsonPath("$.created").value(false))
+        trainingIdOf(traineeId) shouldBe "T-1"
+
+        link(EXPO, representative, trainingId = "T-2").andExpect(status().isOk)
+        link(EXPO, representative).andExpect(status().isOk)
+
+        trainingIdOf(traineeId) shouldBe "T-1"
+        count("tb_trainee") shouldBe 1
+    }
+
+    @Test
+    fun `이어진 연수자에 연수원 아이디 없이 다시 불러도 비어 있으면 그대로 비어 있다`() {
+        val representative = participant("대표", PHONE)
+        val traineeId = traineeIdOf(link(EXPO, representative).andExpect(status().isOk))
+
+        link(EXPO, representative).andExpect(status().isOk).andExpect(jsonPath("$.created").value(false))
+
+        trainingIdOf(traineeId) shouldBe null
+    }
+
+    @Test
     fun `동시에 처음 부르면 연수자를 하나만 만든다`() {
         val representative = participant("대표", PHONE)
 
@@ -306,6 +335,9 @@ class TraineeParticipantLinkApiTests : IntegrationTestSupport() {
             .substringAfter("\"traineeId\":")
             .substringBefore(',')
             .toLong()
+
+    private fun trainingIdOf(traineeId: Long): String? =
+        jdbcTemplate.queryForObject("SELECT training_id FROM tb_trainee WHERE id = ?", String::class.java, traineeId)
 
     private fun codeOf(participantId: Long): String =
         jdbcTemplate.queryForObject("SELECT code FROM tb_standard_participant WHERE id = ?", String::class.java, participantId)!!
