@@ -11,6 +11,7 @@ import team.startup.expo.domain.participation.repository.StandardParticipantBrie
 import team.startup.expo.domain.participation.repository.StandardParticipantRepository
 import team.startup.expo.domain.participation.repository.StandardParticipantSurveyAnswerRepository
 import team.startup.expo.domain.participation.service.GetStandardParticipantDetailsService
+import team.startup.expo.domain.training.repository.TraineeRepository
 import team.startup.expo.global.dto.DetailPageReqDto
 import team.startup.expo.global.dto.DetailPageResDto
 import team.startup.expo.global.dto.InformationResDto
@@ -27,6 +28,7 @@ import team.startup.expo.global.util.InformationJson
 class GetStandardParticipantDetailsServiceImpl(
     private val standardParticipantRepository: StandardParticipantRepository,
     private val surveyAnswerRepository: StandardParticipantSurveyAnswerRepository,
+    private val traineeRepository: TraineeRepository,
 ) : GetStandardParticipantDetailsService {
     @Transactional(readOnly = true)
     override fun page(
@@ -45,12 +47,20 @@ class GetStandardParticipantDetailsServiceImpl(
                 .findAnswersByParticipantIds(participants.map { it.id!! })
                 .associateBy { it.participantId }
 
+        val representativePhones =
+            representativePhoneNumbers(expoId, participants.filter { it.phoneNumber == null }.map { it.representativeId })
+        val traineeIds = linkedTraineeIds(participants.map { it.id!! })
+
         val items =
             participants.map {
                 StandardParticipantDetailResDto(
                     participantId = it.id!!,
                     name = it.name,
                     phoneNumber = it.phoneNumber,
+                    notificationPhoneNumber = it.phoneNumber ?: it.representativeId?.let(representativePhones::get),
+                    occupation = it.occupation,
+                    representativeId = it.representativeId,
+                    linkedTraineeId = traineeIds[it.id],
                     personalInformationStatus = it.personalInformationStatus,
                     applicationType = it.applicationType,
                     information =
@@ -88,7 +98,9 @@ class GetStandardParticipantDetailsServiceImpl(
             val rest = if (missing.size > MAX_REPORTED_IDS) " 외 ${missing.size - MAX_REPORTED_IDS}개" else ""
             throw ExpectedException(HttpStatus.NOT_FOUND, "요청한 참가자 중 찾을 수 없는 참가자가 있습니다. (id: $shown$rest)")
         }
-        val representativePhoneNumbers = representativePhoneNumbers(reqDto.expoId, found.values)
+        val representativePhoneNumbers =
+            representativePhoneNumbers(reqDto.expoId, found.values.filter { it.phoneNumber == null }.map { it.representativeId })
+        val traineeIds = linkedTraineeIds(found.keys)
         return ids.map {
             val view = found.getValue(it)
             StandardParticipantBriefResDto(
@@ -98,6 +110,9 @@ class GetStandardParticipantDetailsServiceImpl(
                 // 입장 기록 응답과 같은 규칙이다: 본인 번호, 없으면 대표자 번호
                 notificationPhoneNumber = view.phoneNumber ?: view.representativeId?.let(representativePhoneNumbers::get),
                 personalInformationStatus = view.personalInformationStatus,
+                occupation = view.occupation,
+                representativeId = view.representativeId,
+                linkedTraineeId = traineeIds[view.id],
             )
         }
     }
@@ -105,15 +120,21 @@ class GetStandardParticipantDetailsServiceImpl(
     /** 본인 번호가 없는 참가자(동행자)의 대표자 번호를 한 번에 읽는다. 대표자는 같은 박람회에 있다. */
     private fun representativePhoneNumbers(
         expoId: String,
-        views: Collection<StandardParticipantBriefView>,
+        representativeIds: List<Long?>,
     ): Map<Long, String?> =
-        views
-            .filter { it.phoneNumber == null }
-            .mapNotNull { it.representativeId }
+        representativeIds
+            .filterNotNull()
             .distinct()
             .chunked(QUERY_CHUNK_SIZE)
             .flatMap { standardParticipantRepository.findBriefsByExpoIdAndIdIn(expoId, it) }
             .associate { it.id to it.phoneNumber }
+
+    /** 참가자에 이어진 연수자 id를 한 번에 읽는다. 연결이 없는 참가자는 맵에 없다. */
+    private fun linkedTraineeIds(participantIds: Collection<Long>): Map<Long, Long> =
+        participantIds
+            .chunked(QUERY_CHUNK_SIZE)
+            .flatMap { traineeRepository.findByStandardParticipantIdIn(it) }
+            .associate { it.standardParticipantId to it.id }
 
     private companion object {
         const val QUERY_CHUNK_SIZE = 1_000
