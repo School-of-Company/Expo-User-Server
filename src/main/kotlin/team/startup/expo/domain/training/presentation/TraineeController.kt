@@ -1,6 +1,8 @@
 package team.startup.expo.domain.training.presentation
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
@@ -11,6 +13,8 @@ import team.startup.expo.domain.training.presentation.dto.request.GetTraineeReqD
 import team.startup.expo.domain.training.presentation.dto.response.GetTraineeResDto
 import team.startup.expo.domain.training.service.GetTraineesService
 
+@Tag(name = "연수자 목록(관리자)", description = "박람회별 연수자 조회")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/trainee")
 class TraineeController(

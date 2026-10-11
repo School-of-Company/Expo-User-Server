@@ -1,6 +1,8 @@
 package team.startup.expo.domain.participation.presentation
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -46,6 +48,8 @@ import team.startup.expo.domain.participation.service.VerifyStandardParticipantS
  * 서비스 간 호출 전용이다. `X-Internal-Token`이 필요하며 gateway에 라우팅하지 않는다.
  * 전화번호는 URL이나 쿼리에 남지 않도록 요청 본문으로만 받는다.
  */
+@Tag(name = "내부: 일반 참가자", description = "참가자 조회, 등록, 입장 기록, 대표자 관리, 연수자 조회")
+@SecurityRequirement(name = "internalToken")
 @RestController
 @RequestMapping("/internal")
 class InternalParticipantController(

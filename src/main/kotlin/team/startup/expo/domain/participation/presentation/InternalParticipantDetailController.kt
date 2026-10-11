@@ -1,6 +1,8 @@
 package team.startup.expo.domain.participation.presentation
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Size
 import org.springframework.web.bind.annotation.GetMapping
@@ -21,6 +23,8 @@ import team.startup.expo.global.dto.DetailPageResDto
  * 서비스 간 호출 전용이다. `X-Internal-Token`이 필요하며 gateway에 라우팅하지 않는다.
  * 전화번호는 응답 본문으로만 주고 URL이나 로그에 남기지 않는다.
  */
+@Tag(name = "내부: 참가자 상세(Report)", description = "리포트용 참가자 상세 조회")
+@SecurityRequirement(name = "internalToken")
 @RestController
 @RequestMapping("/internal")
 class InternalParticipantDetailController(

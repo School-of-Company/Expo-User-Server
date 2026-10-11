@@ -1,6 +1,7 @@
 package team.startup.expo.global.security
 
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpMethod
@@ -36,6 +37,7 @@ class SecurityConfig {
         adminRepository: AdminRepository,
         jwtProvider: JwtProvider,
         internalProperties: InternalProperties,
+        @Value("\${springdoc.api-docs.enabled:false}") swaggerEnabled: Boolean,
     ): SecurityFilterChain {
         http
             .csrf { it.disable() }
@@ -62,6 +64,12 @@ class SecurityConfig {
                     .permitAll()
                     .requestMatchers(HttpMethod.PATCH, "/auth")
                     .permitAll()
+                    .requestMatchers(HttpMethod.POST, "/participant-auth/code", "/participant-auth/verify")
+                    .permitAll()
+                    .requestMatchers(HttpMethod.GET, "/participant-auth/session")
+                    .permitAll()
+                    .requestMatchers(HttpMethod.DELETE, "/participant-auth/session")
+                    .permitAll()
                     .requestMatchers(HttpMethod.DELETE, "/auth")
                     .hasAuthority(Authority.ROLE_ADMIN.name)
                     .requestMatchers(HttpMethod.GET, "/admin", "/admin/my", "/trainee/{expo_id}", "/participant/{expo_id}")
@@ -72,6 +80,13 @@ class SecurityConfig {
                     .hasAuthority(Authority.ROLE_ADMIN.name)
                     .requestMatchers(InternalTokenAuthenticationFilter.INTERNAL_PATH_MATCHER)
                     .hasAuthority(InternalTokenAuthenticationFilter.SERVICE_AUTHORITY)
+                // API 문서는 켠 경우에만 연다. 꺼져 있으면 아래 anyRequest 규칙에 걸려 막힌다
+                if (swaggerEnabled) {
+                    requests
+                        .requestMatchers(HttpMethod.GET, "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**")
+                        .permitAll()
+                }
+                requests
                     .anyRequest()
                     .denyAll()
             }
