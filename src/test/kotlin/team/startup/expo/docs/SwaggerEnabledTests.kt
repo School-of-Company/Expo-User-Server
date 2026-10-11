@@ -81,6 +81,36 @@ class SwaggerEnabledTests : IntegrationTestSupport() {
             .asString() shouldBe "관리자 인증"
     }
 
+    @Test
+    fun `새 내부 API와 쿼리 조건이 문서에 나온다`() {
+        val internalDoc = doc("internal")
+
+        paths("internal") shouldContain "/internal/standard-participants/cancellation-status"
+        internalDoc
+            .path("paths")
+            .path("/internal/standard-participants/cancellation-status")
+            .path("post")
+            .path("security")
+            .toString() shouldBe """[{"internalToken":[]}]"""
+        // GET의 쿼리 DTO는 펼쳐져 q와 occupation이 쿼리 파라미터로 보인다
+        queryParameters(internalDoc, "/internal/expos/{expoId}/standard-participants/details") shouldContain "q"
+        queryParameters(internalDoc, "/internal/expos/{expoId}/standard-participants/details") shouldContain "occupation"
+        queryParameters(internalDoc, "/internal/expos/{expoId}/standard-participants/details") shouldContain "cursor"
+        queryParameters(internalDoc, "/internal/expos/{expoId}/trainees/details") shouldContain "size"
+    }
+
+    private fun queryParameters(
+        doc: JsonNode,
+        path: String,
+    ): List<String> =
+        doc
+            .path("paths")
+            .path(path)
+            .path("get")
+            .path("parameters")
+            .filter { it.path("in").asString() == "query" }
+            .map { it.path("name").asString() }
+
     private fun doc(group: String): JsonNode =
         mapper.readTree(
             mockMvc
