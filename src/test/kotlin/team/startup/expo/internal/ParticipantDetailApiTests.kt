@@ -262,6 +262,44 @@ class ParticipantDetailApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `일괄 조회는 직업과 대표자 id와 이어진 연수자를 주고 연결이 없으면 null이다`() {
+        val representative = standard(EXPO, "01000000001", "대표")
+        val companion = companion(EXPO, "동행", representative)
+        setOccupation(representative, "TEACHER")
+        val traineeId = trainee(EXPO, "01000000009", "T-1", "연수")
+        link(traineeId, representative)
+
+        briefs(EXPO, listOf(representative, companion))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].occupation").value("TEACHER"))
+            .andExpect(jsonPath("$[0].representativeId").doesNotExist())
+            .andExpect(jsonPath("$[0].linkedTraineeId").value(traineeId))
+            .andExpect(jsonPath("$[1].occupation").doesNotExist())
+            .andExpect(jsonPath("$[1].representativeId").value(representative))
+            .andExpect(jsonPath("$[1].linkedTraineeId").doesNotExist())
+    }
+
+    @Test
+    fun `커서 목록도 수신 번호와 직업과 대표자 id와 연수 연결을 주고 대표자가 앞 페이지에 있어도 수신 번호를 채운다`() {
+        val representative = standard(EXPO, "01000000001", "대표")
+        val companion = companion(EXPO, "동행", representative)
+        setOccupation(companion, "PARENT")
+        val traineeId = trainee(EXPO, "01000000009", "T-1", "연수")
+        link(traineeId, companion)
+
+        // size=1이라 대표자는 첫 페이지, 동행자는 둘째 페이지에 있다
+        get("/internal/expos/$EXPO/standard-participants/details?cursor=$representative&size=1")
+            .let { mockMvc.perform(it.header("X-Internal-Token", INTERNAL_TOKEN)) }
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items[0].participantId").value(companion))
+            .andExpect(jsonPath("$.items[0].phoneNumber").doesNotExist())
+            .andExpect(jsonPath("$.items[0].notificationPhoneNumber").value("01000000001"))
+            .andExpect(jsonPath("$.items[0].occupation").value("PARENT"))
+            .andExpect(jsonPath("$.items[0].representativeId").value(representative))
+            .andExpect(jsonPath("$.items[0].linkedTraineeId").value(traineeId))
+    }
+
+    @Test
     fun `일괄 조회에 없는 id나 다른 박람회의 id가 섞이면 조용히 빼지 않고 404이다`() {
         val a = standard(EXPO, "01000000001", "가")
         val other = standard(OTHER_EXPO, "01000000002", "다른행사")
@@ -334,6 +372,20 @@ class ParticipantDetailApiTests : IntegrationTestSupport() {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"expoId":"$expoId","participantIds":[${ids.joinToString(",")}]}"""),
         )
+
+    private fun setOccupation(
+        participantId: Long,
+        occupation: String,
+    ) {
+        jdbcTemplate.update("UPDATE tb_standard_participant SET occupation = ? WHERE id = ?", occupation, participantId)
+    }
+
+    private fun link(
+        traineeId: Long,
+        participantId: Long,
+    ) {
+        jdbcTemplate.update("UPDATE tb_trainee SET standard_participant_id = ? WHERE id = ?", participantId, traineeId)
+    }
 
     private fun companion(
         expoId: String,
