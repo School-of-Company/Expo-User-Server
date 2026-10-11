@@ -145,6 +145,90 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `처음 신청의 일행 전체는 대표자가 먼저이고 문자 대상과 같다`() {
+        val response =
+            register(ALICE, BOB, CAROL)
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response.contentAsString
+
+        val ids = allIds()
+        ids.size shouldBe 3
+        longs(response, "groupParticipantIds") shouldBe ids
+        longs(response, "participantIds") shouldBe ids
+    }
+
+    @Test
+    fun `동행자를 추가하는 재신청은 문자 대상이 새 동행자뿐이어도 일행 전체를 돌려준다`() {
+        register(ALICE, BOB).andExpect(status().isCreated)
+
+        val response =
+            register(ALICE, BOB, CAROL)
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response.contentAsString
+
+        val ids = allIds()
+        ids.size shouldBe 3
+        // 문자 대상은 새로 만든 동행자 한 명이고, 일행 전체는 대표자와 기존·신규 동행자 전원이다
+        longs(response, "participantIds") shouldBe listOf(ids.last())
+        longs(response, "groupParticipantIds") shouldBe ids
+    }
+
+    @Test
+    fun `새 동행자가 없는 재신청은 기존 전원이 문자 대상이고 일행 전체와 같다`() {
+        register(ALICE, BOB).andExpect(status().isCreated)
+
+        val response =
+            register(ALICE, BOB)
+                .andExpect(status().isOk)
+                .andReturn()
+                .response.contentAsString
+
+        val ids = allIds()
+        longs(response, "participantIds") shouldBe ids
+        longs(response, "groupParticipantIds") shouldBe ids
+    }
+
+    @Test
+    fun `같은 requestId의 재시도는 그 사이 다른 신청이 동행자를 더해도 처음의 일행 전체를 돌려준다`() {
+        val requestId = UUID.randomUUID().toString()
+        val first =
+            register(ALICE, BOB, requestId = requestId)
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response.contentAsString
+        val before = longs(first, "groupParticipantIds")
+        before.size shouldBe 2
+
+        // 응답을 잃은 사이 다른 신청(요청 키 없음)이 같은 대표자에게 동행자를 더한다
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+        allIds().size shouldBe 3
+
+        val retry =
+            register(ALICE, BOB, requestId = requestId)
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response.contentAsString
+
+        longs(retry, "groupParticipantIds") shouldBe before
+        longs(retry, "participantIds") shouldBe longs(first, "participantIds")
+    }
+
+    @Test
+    fun `일행 전체 목록에도 code를 싣지 않는다`() {
+        val response =
+            register(ALICE, BOB)
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response.contentAsString
+
+        val codes = jdbcTemplate.queryForList("SELECT code FROM tb_standard_participant", String::class.java)
+        codes.none { response.contains(it.orEmpty()) } shouldBe true
+        response.contains("\"code\"") shouldBe false
+    }
+
+    @Test
     fun `이름이 같아도 구분이나 소속이 다르면 다른 사람이다`() {
         register(ALICE, BOB).andExpect(status().isCreated)
 
@@ -299,6 +383,29 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
                 "SELECT participants_json FROM tb_registration_outbox WHERE event_type = 'REGISTERED' ORDER BY id",
                 String::class.java,
             ).map { mapper.readTree(it).toList() }
+
+    /** 저장된 참가자 `id`를 대표자가 먼저, 이후 `id` 순서로 돌려준다(응답의 일행 전체 순서와 같다). */
+    private fun allIds(): List<Long> =
+        jdbcTemplate.queryForList("SELECT id FROM tb_standard_participant ORDER BY id", Long::class.java).map { it!! }
+
+    private fun bodyOf(
+        result: ResultActions,
+        expectedStatus: Int,
+    ): String {
+        val response = result.andReturn().response
+        response.status shouldBe expectedStatus
+        return response.contentAsString
+    }
+
+    private fun longs(
+        json: String,
+        field: String,
+    ): List<Long> =
+        mapper
+            .readTree(json)
+            .path(field)
+            .toList()
+            .map { it.asLong() }
 
     private fun count(from: String) = jdbcTemplate.queryForObject("SELECT count(*) FROM $from", Long::class.java)
 

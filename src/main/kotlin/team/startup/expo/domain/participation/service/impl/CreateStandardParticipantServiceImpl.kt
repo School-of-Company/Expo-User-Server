@@ -73,6 +73,7 @@ class CreateStandardParticipantServiceImpl(
             phoneNumber = representative.phoneNumber!!,
             created = true,
             participantIds = saved.map { it.id!! },
+            groupParticipantIds = saved.map { it.id!! },
             createdIds = saved.map { it.id!! },
             participants = saved.map { RegisteredParticipant(it.id!!, it.code) },
         )
@@ -97,6 +98,8 @@ class CreateStandardParticipantServiceImpl(
             phoneNumber = representative.phoneNumber!!,
             created = created.isNotEmpty(),
             participantIds = texted.map { it.id!! },
+            // 대표자, 기존 동행자, 이번에 더한 동행자 전체(`id` 순서). 문자 대상과 달리 새 동행자만 있어도 일행 전체다
+            groupParticipantIds = (listOf(representative) + registered + created).map { it.id!! },
             createdIds = created.map { it.id!! },
             participants = texted.map { RegisteredParticipant(it.id!!, it.code) },
         )
