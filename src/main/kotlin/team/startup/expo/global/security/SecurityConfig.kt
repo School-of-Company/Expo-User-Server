@@ -83,8 +83,13 @@ class SecurityConfig {
                 // API 문서는 켠 경우에만 연다. 꺼져 있으면 아래 anyRequest 규칙에 걸려 막힌다
                 if (swaggerEnabled) {
                     requests
-                        .requestMatchers(HttpMethod.GET, "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**")
-                        .permitAll()
+                        .requestMatchers(
+                            HttpMethod.GET,
+                            "/auth/v3/api-docs",
+                            "/auth/v3/api-docs/**",
+                            "/auth/swagger-ui.html",
+                            "/auth/swagger-ui/**",
+                        ).permitAll()
                 }
                 requests
                     .anyRequest()

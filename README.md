@@ -16,3 +16,10 @@ Expo-User-Server
 - 승인된 관리자가 이미 있거나 닉네임의 계정이 승인 대기가 아니면 아무것도 하지 않는다. 로그에는 닉네임만 남긴다.
 - 환경변수를 쓰지 않을 때의 수동 방법은 DB에서 `status`와 `authority`를 **함께** 바꾸는 것이다(`status`만 바꾸면 모든 API가 403이다).
   `UPDATE tb_admin SET status = 'ACCEPTED', authority = 'ROLE_ADMIN' WHERE nickname = '...';`
+
+## API 문서(Swagger)
+
+기본은 꺼짐이다. 서버에서 환경변수로 켠다. 둘 다 선택 값이라 없어도 기동에 영향이 없다.
+
+- `SWAGGER_ENABLED=true`: `/auth/v3/api-docs`(OpenAPI JSON)와 `/auth/swagger-ui.html`을 연다. Gateway는 경로 접두사로만 서비스를 찾기 때문에 문서를 `/auth` 접두사 아래에 둔다.
+- `SWAGGER_INCLUDE_INTERNAL=true`: `/internal` 하위 API와 `X-Internal-Token` 인증 방식을 문서에 넣는다(기본 `false`, `SWAGGER_ENABLED`가 꺼져 있으면 의미 없다). 문서 예시에는 토큰 값이나 실제 전화번호, `code`를 넣지 않는다.

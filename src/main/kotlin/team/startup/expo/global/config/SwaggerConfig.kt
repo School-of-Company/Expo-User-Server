@@ -4,15 +4,16 @@ import io.swagger.v3.oas.models.Components
 import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.info.Info
 import io.swagger.v3.oas.models.security.SecurityScheme
-import org.springdoc.core.models.GroupedOpenApi
+import org.springdoc.core.customizers.OpenApiCustomizer
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 /**
  * `springdoc` 문서 설정이다. 문서는 `SWAGGER_ENABLED=true`일 때만 열린다(기본은 꺼짐, `application.yaml`과 `SecurityConfig` 참고).
  *
- * 공개 API(Gateway를 거쳐 클라이언트가 부르는 경로)와 서비스 간 호출용 `/internal` 하위 경로를 문서 그룹으로 나눈다. `/internal`
- * 하위 경로는 Gateway에 라우팅하지 않는 경로라 공개 그룹에 섞이지 않게 하고, 인증 방식도 `X-Internal-Token`으로 따로 표시한다.
+ * Gateway의 통합 문서 화면이 `/auth/v3/api-docs`를 읽는다. 서비스 간 호출용 `/internal` 하위 경로는 Gateway에 라우팅하지 않는
+ * 경로라 `SWAGGER_INCLUDE_INTERNAL=true`일 때만 문서에 넣고, 그때만 `X-Internal-Token` 인증 방식을 표시한다.
  */
 @Configuration
 class SwaggerConfig {
@@ -25,7 +26,7 @@ class SwaggerConfig {
                     .version("v1")
                     .description(
                         "인증, 관리자, 연수자, 참가자 서비스. 오류 응답은 `{status, message}` 형식이다. " +
-                            "서비스 간 호출(`/internal/**`)은 `X-Internal-Token`으로만 인증하며 Gateway로 노출하지 않는다.",
+                            "서비스 간 호출(`/internal/**`)은 `X-Internal-Token`으로만 인증하며 Gateway로 노출하지 않고, 설정을 켠 경우에만 이 문서에 나온다.",
                     ),
             ).components(
                 Components()
@@ -53,24 +54,16 @@ class SwaggerConfig {
                     ),
             )
 
+    /** `/internal` 하위 경로를 빼고, 그 경로에서만 쓰던 스키마·태그·인증 방식도 함께 뺀다. 켜면 아무것도 바꾸지 않는다. */
     @Bean
-    fun publicApi(): GroupedOpenApi =
-        GroupedOpenApi
-            .builder()
-            .group("public")
-            .displayName("공개 API (Gateway 경유)")
-            .pathsToMatch("/**")
-            .pathsToExclude("/internal/**")
-            .build()
-
-    @Bean
-    fun internalApi(): GroupedOpenApi =
-        GroupedOpenApi
-            .builder()
-            .group("internal")
-            .displayName("서비스 간 내부 API (X-Internal-Token)")
-            .pathsToMatch("/internal/**")
-            .build()
+    fun internalFilter(
+        @Value("\${swagger.include-internal:false}") includeInternal: Boolean,
+    ): OpenApiCustomizer =
+        OpenApiCustomizer { openApi ->
+            if (!includeInternal) {
+                OpenApiInternalFilter.remove(openApi)
+            }
+        }
 
     companion object {
         const val BEARER_AUTH = "bearerAuth"

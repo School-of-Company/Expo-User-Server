@@ -68,10 +68,14 @@ participant-session:
   secure: ${PARTICIPANT_SESSION_COOKIE_SECURE:true}
   same-site: ${PARTICIPANT_SESSION_COOKIE_SAME_SITE:Lax}
   domain: ${PARTICIPANT_SESSION_COOKIE_DOMAIN:}
-# 문서는 SWAGGER_ENABLED=true일 때만 연다(기본은 꺼짐). 켜면 /swagger-ui.html과 /v3/api-docs가 열린다. Gateway는 이 경로를 라우팅하지 않는다
+# 문서는 SWAGGER_ENABLED=true일 때만 연다(기본은 꺼짐). Gateway는 경로 접두사로만 서비스를 찾아서 문서를 /auth 접두사 아래에 둔다.
+# /internal 하위 경로는 SWAGGER_INCLUDE_INTERNAL=true일 때만 문서에 넣는다(기본은 뺌)
 springdoc:
   api-docs:
     enabled: ${SWAGGER_ENABLED:false}
+    path: /auth/v3/api-docs
   swagger-ui:
     enabled: ${SWAGGER_ENABLED:false}
-    groups-order: asc
+    path: /auth/swagger-ui.html
+swagger:
+  include-internal: ${SWAGGER_INCLUDE_INTERNAL:false}
