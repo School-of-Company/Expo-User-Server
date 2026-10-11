@@ -1,5 +1,6 @@
 package team.startup.expo.internal
 
+import io.kotest.matchers.shouldBe
 import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -300,6 +301,84 @@ class ParticipantDetailApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `q는 이름을 대소문자 무시 부분 일치로 찾고 다른 박람회는 찾지 않는다`() {
+        val kim = standard(EXPO, "01000000001", "Kim철수")
+        standard(EXPO, "01000000002", "이영희")
+        standard(OTHER_EXPO, "01000000003", "Kim다른")
+
+        searchIds("q=kIM") shouldBe (listOf(kim))
+        searchIds("q=영") shouldBe (listOf(kim + 1))
+        searchIds("q=없는이름") shouldBe (emptyList())
+    }
+
+    @Test
+    fun `q의 퍼센트와 밑줄은 와일드카드가 아니다`() {
+        standard(EXPO, "01000000001", "가나다")
+        val literal = standard(EXPO, "01000000002", "100%_")
+
+        searchIds("q=%25") shouldBe (listOf(literal))
+        searchIds("q=_") shouldBe (listOf(literal))
+    }
+
+    @Test
+    fun `숫자 q는 하이픈을 뺀 전화번호 부분 일치로 찾고 동행자는 대표 수신 번호로 찾는다`() {
+        val representative = standard(EXPO, "010-1234-5678", "대표")
+        val companion = companion(EXPO, "동행", representative)
+        standard(EXPO, "01099990000", "다른사람")
+
+        searchIds("q=1234-56") shouldBe (listOf(representative, companion))
+        searchIds("q=01099") shouldBe (listOf(representative + 2))
+    }
+
+    @Test
+    fun `occupation은 정확히 같은 직업만 남기고 q와 함께 쓰면 둘 다 만족해야 한다`() {
+        val teacher = standard(EXPO, "01000000001", "김교사")
+        val parent = standard(EXPO, "01000000002", "김학부모")
+        setOccupation(teacher, "TEACHER")
+        setOccupation(parent, "PARENT")
+
+        searchIds("occupation=TEACHER") shouldBe (listOf(teacher))
+        searchIds("occupation=PARENT&q=김") shouldBe (listOf(parent))
+        searchIds("occupation=TEACHER&q=학부모") shouldBe (emptyList())
+    }
+
+    @Test
+    fun `필터를 써도 id 오름차순 커서와 size 규칙을 지킨다`() {
+        val a = standard(EXPO, "01000000001", "김가")
+        standard(EXPO, "01000000002", "이나")
+        val c = standard(EXPO, "01000000003", "김다")
+        val d = standard(EXPO, "01000000004", "김라")
+
+        mockMvc
+            .perform(get("/internal/expos/$EXPO/standard-participants/details?q=김&size=2").header("X-Internal-Token", INTERNAL_TOKEN))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items.length()").value(2))
+            .andExpect(jsonPath("$.items[0].participantId").value(a))
+            .andExpect(jsonPath("$.items[1].participantId").value(c))
+            .andExpect(jsonPath("$.nextCursor").value(c))
+        mockMvc
+            .perform(
+                get("/internal/expos/$EXPO/standard-participants/details?q=김&size=2&cursor=$c").header("X-Internal-Token", INTERNAL_TOKEN),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.items.length()").value(1))
+            .andExpect(jsonPath("$.items[0].participantId").value(d))
+            .andExpect(jsonPath("$.nextCursor").value(nullValue()))
+    }
+
+    @Test
+    fun `알 수 없는 occupation이나 너무 긴 q는 400이다`() {
+        standard(EXPO, "01000000001", "가")
+
+        mockMvc
+            .perform(get("/internal/expos/$EXPO/standard-participants/details?occupation=ALIEN").header("X-Internal-Token", INTERNAL_TOKEN))
+            .andExpect(status().isBadRequest)
+        mockMvc
+            .perform(
+                get("/internal/expos/$EXPO/standard-participants/details?q=${"a".repeat(51)}").header("X-Internal-Token", INTERNAL_TOKEN),
+            ).andExpect(status().isBadRequest)
+    }
+
+    @Test
     fun `일괄 조회에 없는 id나 다른 박람회의 id가 섞이면 조용히 빼지 않고 404이다`() {
         val a = standard(EXPO, "01000000001", "가")
         val other = standard(OTHER_EXPO, "01000000002", "다른행사")
@@ -372,6 +451,16 @@ class ParticipantDetailApiTests : IntegrationTestSupport() {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"expoId":"$expoId","participantIds":[${ids.joinToString(",")}]}"""),
         )
+
+    private fun searchIds(query: String): List<Long> {
+        val body =
+            mockMvc
+                .perform(get("/internal/expos/$EXPO/standard-participants/details?$query").header("X-Internal-Token", INTERNAL_TOKEN))
+                .andExpect(status().isOk)
+                .andReturn()
+                .response.contentAsString
+        return Regex("\"participantId\":(\\d+)").findAll(body).map { it.groupValues[1].toLong() }.toList()
+    }
 
     private fun setOccupation(
         participantId: Long,
