@@ -7,6 +7,9 @@ import org.springframework.data.repository.query.Param
 import team.startup.expo.domain.training.entity.Trainee
 
 interface TraineeRepository : JpaRepository<Trainee, Long> {
+    /** 사전등록 참가자에 이어진 연수자. 참가자 한 명에 연수자 한 명이다. */
+    fun findByStandardParticipantId(standardParticipantId: Long): Trainee?
+
     /** 저장된 표기와 정확히 같은 번호. `(expo_id, phone_number)` 유일 인덱스를 탄다. */
     fun findByExpoIdAndPhoneNumber(
         expoId: String,

@@ -10,14 +10,17 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import team.startup.expo.domain.training.presentation.dto.request.CreateTraineeReqDto
 import team.startup.expo.domain.training.presentation.dto.request.GetTraineeNamesReqDto
+import team.startup.expo.domain.training.presentation.dto.request.ResolveOrCreateTraineeByParticipantReqDto
 import team.startup.expo.domain.training.presentation.dto.request.ResolveOrCreateTraineeReqDto
 import team.startup.expo.domain.training.presentation.dto.request.ResolveTraineeReqDto
 import team.startup.expo.domain.training.presentation.dto.response.CreateTraineeResDto
+import team.startup.expo.domain.training.presentation.dto.response.ResolveOrCreateTraineeByParticipantResDto
 import team.startup.expo.domain.training.presentation.dto.response.ResolveOrCreateTraineeResDto
 import team.startup.expo.domain.training.presentation.dto.response.ResolveTraineeResDto
 import team.startup.expo.domain.training.presentation.dto.response.TraineeNameResDto
 import team.startup.expo.domain.training.service.GetTraineeNamesService
 import team.startup.expo.domain.training.service.RegisterTraineeService
+import team.startup.expo.domain.training.service.ResolveOrCreateTraineeByParticipantService
 import team.startup.expo.domain.training.service.ResolveOrCreateTraineeService
 import team.startup.expo.domain.training.service.ResolveTraineeService
 
@@ -32,6 +35,7 @@ class InternalTraineeController(
     private val getTraineeNamesService: GetTraineeNamesService,
     private val registerTraineeService: RegisterTraineeService,
     private val resolveOrCreateTraineeService: ResolveOrCreateTraineeService,
+    private val resolveOrCreateTraineeByParticipantService: ResolveOrCreateTraineeByParticipantService,
 ) {
     @Operation(summary = "연수자 id 조회", description = "박람회 id와 연수 번호로 연수자 id를 찾습니다. 없으면 404, 같은 번호의 연수자가 여럿이면 409입니다.")
     @PostMapping("/resolve")
@@ -63,4 +67,15 @@ class InternalTraineeController(
     fun resolveOrCreateTrainee(
         @Valid @RequestBody reqDto: ResolveOrCreateTraineeReqDto,
     ): ResolveOrCreateTraineeResDto = resolveOrCreateTraineeService.execute(reqDto)
+
+    @Operation(
+        summary = "사전등록 참가자에 이어진 연수자 조회 또는 생성",
+        description =
+            "참가자에 이어진 연수자가 있으면 그대로 돌려주고(created=false, 요청 값으로 덮어쓰지 않음) 없으면 한 번 만들어 잇습니다(created=true). " +
+                "참가자가 없거나 다른 박람회의 참가자면 404, 삭제 중인 박람회면 409입니다.",
+    )
+    @PostMapping("/resolve-or-create-by-participant")
+    fun resolveOrCreateTraineeByParticipant(
+        @Valid @RequestBody reqDto: ResolveOrCreateTraineeByParticipantReqDto,
+    ): ResolveOrCreateTraineeByParticipantResDto = resolveOrCreateTraineeByParticipantService.execute(reqDto)
 }

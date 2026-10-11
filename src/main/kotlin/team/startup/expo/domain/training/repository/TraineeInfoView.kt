@@ -6,7 +6,7 @@ import team.startup.expo.domain.training.entity.ApplicationType
 interface TraineeInfoView {
     val id: Long
     val name: String
-    val trainingId: String
-    val phoneNumber: String
+    val trainingId: String?
+    val phoneNumber: String?
     val applicationType: ApplicationType
 }

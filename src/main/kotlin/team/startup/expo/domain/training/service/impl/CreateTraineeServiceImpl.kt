@@ -78,6 +78,6 @@ class CreateTraineeServiceImpl(
             } catch (exception: DataIntegrityViolationException) {
                 throw ConstraintViolations.translate(exception)
             }
-        return CreateTraineeResDto(saved.id!!, saved.phoneNumber)
+        return CreateTraineeResDto(saved.id!!, reqDto.phoneNumber)
     }
 }
