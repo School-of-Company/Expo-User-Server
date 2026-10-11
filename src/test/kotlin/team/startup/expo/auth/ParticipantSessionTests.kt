@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import team.startup.expo.domain.auth.service.ParticipantSessionService
 import team.startup.expo.support.FakeExpoServer
 import team.startup.expo.support.FakeNotificationServer
 import team.startup.expo.support.IntegrationTestSupport
@@ -32,6 +33,9 @@ class ParticipantSessionTests : IntegrationTestSupport() {
 
     @Autowired
     private lateinit var redis: StringRedisTemplate
+
+    @Autowired
+    private lateinit var participantSessionService: ParticipantSessionService
 
     private val executor = Executors.newFixedThreadPool(THREADS)
 
@@ -175,6 +179,32 @@ class ParticipantSessionTests : IntegrationTestSupport() {
         statuses.count { it == 200 } shouldBe 1
         statuses.count { it == 409 } shouldBe THREADS - 1
         redis.keys("participant_session:*").size shouldBe 1
+    }
+
+    @Test
+    fun `인증번호 사용 기록과 세션은 함께 만들어지고 이미 쓴 코드면 세션을 하나도 만들지 않는다`() {
+        val first = participantSessionService.issueIfCodeUnused(EXPO, PHONE, "1234")
+
+        checkNotNull(first)
+        redis.keys("participant_otp_used:*").size shouldBe 1
+        redis.keys("participant_session:*").size shouldBe 1
+
+        val second = participantSessionService.issueIfCodeUnused(EXPO, PHONE, "1234")
+
+        second shouldBe null
+        redis.keys("participant_otp_used:*").size shouldBe 1
+        redis.keys("participant_session:*").size shouldBe 1
+    }
+
+    @Test
+    fun `같은 번호의 다른 인증번호는 각각 세션을 받는다`() {
+        val first = participantSessionService.issueIfCodeUnused(EXPO, PHONE, "1234")
+        val second = participantSessionService.issueIfCodeUnused(EXPO, PHONE, "5678")
+
+        checkNotNull(first)
+        checkNotNull(second)
+        (first.sessionId == second.sessionId) shouldBe false
+        redis.keys("participant_session:*").size shouldBe 2
     }
 
     @Test
