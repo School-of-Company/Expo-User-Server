@@ -18,6 +18,7 @@ import team.startup.expo.domain.participation.presentation.dto.request.IncreaseS
 import team.startup.expo.domain.participation.presentation.dto.request.RecordEntryReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveStandardParticipantReqDto
+import team.startup.expo.domain.participation.presentation.dto.request.ResolveTraineeByParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.SelectManagedParticipantsReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.VerifyStandardParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.response.CreateStandardParticipantResDto
@@ -27,6 +28,7 @@ import team.startup.expo.domain.participation.presentation.dto.response.ManagedP
 import team.startup.expo.domain.participation.presentation.dto.response.RecordEntryResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveStandardParticipantResDto
+import team.startup.expo.domain.participation.presentation.dto.response.ResolveTraineeByParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantNameResDto
 import team.startup.expo.domain.participation.service.GetManagedParticipantsService
 import team.startup.expo.domain.participation.service.GetStandardParticipantNamesService
@@ -36,6 +38,7 @@ import team.startup.expo.domain.participation.service.RecordEntryService
 import team.startup.expo.domain.participation.service.RegisterStandardParticipantService
 import team.startup.expo.domain.participation.service.ResolveParticipantService
 import team.startup.expo.domain.participation.service.ResolveStandardParticipantService
+import team.startup.expo.domain.participation.service.ResolveTraineeByParticipantService
 import team.startup.expo.domain.participation.service.SelectManagedParticipantsService
 import team.startup.expo.domain.participation.service.VerifyStandardParticipantService
 
@@ -54,6 +57,7 @@ class InternalParticipantController(
     private val increaseSmsTryTimeService: IncreaseSmsTryTimeService,
     private val recordEntryService: RecordEntryService,
     private val verifyStandardParticipantService: VerifyStandardParticipantService,
+    private val resolveTraineeByParticipantService: ResolveTraineeByParticipantService,
     private val getManagedParticipantsService: GetManagedParticipantsService,
     private val selectManagedParticipantsService: SelectManagedParticipantsService,
 ) {
@@ -149,4 +153,16 @@ class InternalParticipantController(
     fun selectManagedParticipants(
         @Valid @RequestBody reqDto: SelectManagedParticipantsReqDto,
     ): List<ManagedParticipantResDto> = selectManagedParticipantsService.execute(reqDto)
+
+    @Operation(
+        summary = "참가자에 이어진 연수자 조회",
+        description =
+            "QR의 participantId와 code가 맞고 그 참가자에 이어진 연수자가 있으면 traineeId를 돌려줍니다. 입장이나 출석을 기록하지 않고 " +
+                "상태를 바꾸지 않으며 연결이 없어도 새로 만들지 않습니다. 참가자가 없거나, 다른 박람회이거나, code가 다르거나, " +
+                "연결이 없으면 구분하지 않고 404입니다.",
+    )
+    @PostMapping("/standard-participants/trainee")
+    fun resolveTraineeByParticipant(
+        @Valid @RequestBody reqDto: ResolveTraineeByParticipantReqDto,
+    ): ResolveTraineeByParticipantResDto = resolveTraineeByParticipantService.execute(reqDto)
 }
