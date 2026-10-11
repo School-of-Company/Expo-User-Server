@@ -8,4 +8,7 @@ data class TraineeDetailResDto(
     val name: String,
     val trainingId: String?,
     val information: InformationResDto,
+    val participantId: Long?,
+    val school: String?,
+    val registration: InformationResDto?,
 )
