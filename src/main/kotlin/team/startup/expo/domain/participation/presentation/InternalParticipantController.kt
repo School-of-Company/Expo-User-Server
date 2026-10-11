@@ -12,20 +12,25 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import team.startup.expo.domain.participation.presentation.dto.request.CreateStandardParticipantReqDto
+import team.startup.expo.domain.participation.presentation.dto.request.GetManagedParticipantsReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.GetStandardParticipantNamesReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.IncreaseSmsTryTimeReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.RecordEntryReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveStandardParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveTraineeByParticipantReqDto
+import team.startup.expo.domain.participation.presentation.dto.request.SelectManagedParticipantsReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.VerifyStandardParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.response.CreateStandardParticipantResDto
+import team.startup.expo.domain.participation.presentation.dto.response.GetManagedParticipantsResDto
 import team.startup.expo.domain.participation.presentation.dto.response.GetSurveyAnswerEventResDto
+import team.startup.expo.domain.participation.presentation.dto.response.ManagedParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.RecordEntryResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveStandardParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveTraineeByParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantNameResDto
+import team.startup.expo.domain.participation.service.GetManagedParticipantsService
 import team.startup.expo.domain.participation.service.GetStandardParticipantNamesService
 import team.startup.expo.domain.participation.service.GetSurveyAnswerEventService
 import team.startup.expo.domain.participation.service.IncreaseSmsTryTimeService
@@ -34,6 +39,7 @@ import team.startup.expo.domain.participation.service.RegisterStandardParticipan
 import team.startup.expo.domain.participation.service.ResolveParticipantService
 import team.startup.expo.domain.participation.service.ResolveStandardParticipantService
 import team.startup.expo.domain.participation.service.ResolveTraineeByParticipantService
+import team.startup.expo.domain.participation.service.SelectManagedParticipantsService
 import team.startup.expo.domain.participation.service.VerifyStandardParticipantService
 
 /**
@@ -52,6 +58,8 @@ class InternalParticipantController(
     private val recordEntryService: RecordEntryService,
     private val verifyStandardParticipantService: VerifyStandardParticipantService,
     private val resolveTraineeByParticipantService: ResolveTraineeByParticipantService,
+    private val getManagedParticipantsService: GetManagedParticipantsService,
+    private val selectManagedParticipantsService: SelectManagedParticipantsService,
 ) {
     @Operation(summary = "일반 참가자 id 조회", description = "박람회 id와 전화번호로 일반 참가자 id를 찾습니다. 없으면 404입니다.")
     @PostMapping("/standard-participants/resolve")
@@ -123,6 +131,28 @@ class InternalParticipantController(
     fun recordEntry(
         @Valid @RequestBody reqDto: RecordEntryReqDto,
     ): RecordEntryResDto = recordEntryService.execute(reqDto)
+
+    @Operation(
+        summary = "대표자가 관리하는 참가자 목록",
+        description =
+            "행사와 검증된 전화번호의 대표자 본인과 동행자를 돌려줍니다. 이 번호로 등록된 대표자가 없으면 registered=false입니다. " +
+                "전화번호와 QR code는 싣지 않습니다.",
+    )
+    @PostMapping("/standard-participants/managed")
+    fun getManagedParticipants(
+        @Valid @RequestBody reqDto: GetManagedParticipantsReqDto,
+    ): GetManagedParticipantsResDto = getManagedParticipantsService.execute(reqDto)
+
+    @Operation(
+        summary = "선택한 참가자의 관리 권한 확인",
+        description =
+            "요청한 참가자가 모두 그 번호의 대표자 본인이나 동행자이면 저장된 값을 요청 순서대로 돌려줍니다. " +
+                "하나라도 아니면(다른 대표자, 다른 행사, 없는 id, 등록 안 된 번호) 구분하지 않고 404입니다.",
+    )
+    @PostMapping("/standard-participants/managed/select")
+    fun selectManagedParticipants(
+        @Valid @RequestBody reqDto: SelectManagedParticipantsReqDto,
+    ): List<ManagedParticipantResDto> = selectManagedParticipantsService.execute(reqDto)
 
     @Operation(
         summary = "참가자에 이어진 연수자 조회",
