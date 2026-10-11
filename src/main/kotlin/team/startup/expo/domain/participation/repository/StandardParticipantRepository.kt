@@ -17,6 +17,12 @@ interface StandardParticipantRepository : JpaRepository<StandardParticipant, Lon
     /** 대표자에 딸린 동행자를 등록 순서대로 읽는다. */
     fun findAllByRepresentativeIdOrderById(representativeId: Long): List<StandardParticipant>
 
+    /** 대표자 본인과 그 대표자의 동행자를 `id` 순서로 읽는다. 첫 파라미터는 대표자의 `id`, 둘째는 같은 값이다. */
+    fun findAllByIdOrRepresentativeIdOrderById(
+        id: Long,
+        representativeId: Long,
+    ): List<ManagedParticipantView>
+
     fun findByIdAndExpoId(
         id: Long,
         expoId: String,
