@@ -2,6 +2,7 @@ package team.startup.expo.domain.auth.service.impl
 
 import org.springframework.dao.DataAccessException
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.script.DefaultRedisScript
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import team.startup.expo.domain.auth.model.IssuedParticipantSession
@@ -31,15 +32,27 @@ class ParticipantSessionServiceImpl(
     private val jsonMapper: JsonMapper,
 ) : ParticipantSessionService {
     private val random = SecureRandom()
+    private val issueScript = DefaultRedisScript(ISSUE_SCRIPT, Long::class.java)
 
-    override fun issue(
+    override fun issueIfCodeUnused(
         expoId: String,
         phoneNumber: String,
-    ): IssuedParticipantSession {
+        code: String,
+    ): IssuedParticipantSession? {
         val sessionId = newSessionId()
         val expiresAt = LocalDateTime.now(ZoneOffset.UTC).plus(properties.ttl)
         val stored = StoredSession(expoId, phoneNumber, expiresAt.toEpochSecond(ZoneOffset.UTC))
-        redisCall { redis.opsForValue().set(sessionKey(sessionId), jsonMapper.writeValueAsString(stored), properties.ttl) }
+        val issued =
+            redisCall {
+                redis.execute(
+                    issueScript,
+                    listOf(usedCodeKey(phoneNumber, code), sessionKey(sessionId)),
+                    properties.usedCodeTtl.toMillis().toString(),
+                    properties.ttl.toMillis().toString(),
+                    jsonMapper.writeValueAsString(stored),
+                )
+            }
+        if (issued != ISSUED) return null
         return IssuedParticipantSession(sessionId, ParticipantSession(expoId, phoneNumber, expiresAt))
     }
 
@@ -63,11 +76,6 @@ class ParticipantSessionServiceImpl(
     override fun revoke(sessionId: String) {
         redisCall { redis.delete(sessionKey(sessionId)) }
     }
-
-    override fun markCodeUsed(
-        phoneNumber: String,
-        code: String,
-    ): Boolean = redisCall { redis.opsForValue().setIfAbsent(usedCodeKey(phoneNumber, code), "1", properties.usedCodeTtl) } == true
 
     private fun <T> redisCall(action: () -> T): T =
         try {
@@ -96,6 +104,13 @@ class ParticipantSessionServiceImpl(
         const val SESSION_PREFIX = "participant_session:"
         const val USED_CODE_PREFIX = "participant_otp_used:"
         const val SESSION_ID_BYTES = 32
+        const val ISSUED = 1L
+
+        // 사용 기록(KEYS[1])을 처음 남길 때만 세션(KEYS[2])을 저장한다. 이미 쓴 코드면 아무것도 쓰지 않고 0을 돌려준다.
+        // 한 스크립트라 사용 기록만 남고 세션이 없는 상태가 생기지 않는다
+        const val ISSUE_SCRIPT =
+            "if redis.call('SET', KEYS[1], '1', 'NX', 'PX', ARGV[1]) == false then return 0 end " +
+                "redis.call('SET', KEYS[2], ARGV[3], 'PX', ARGV[2]) return 1"
     }
 }
 
