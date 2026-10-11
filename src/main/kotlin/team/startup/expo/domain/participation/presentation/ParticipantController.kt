@@ -1,6 +1,8 @@
 package team.startup.expo.domain.participation.presentation
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
@@ -11,6 +13,8 @@ import team.startup.expo.domain.participation.presentation.dto.request.GetPartic
 import team.startup.expo.domain.participation.presentation.dto.response.GetParticipantResDto
 import team.startup.expo.domain.participation.service.GetParticipantsService
 
+@Tag(name = "참가자 목록(관리자)", description = "박람회별 일반 참가자 조회")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/participant")
 class ParticipantController(

@@ -68,3 +68,10 @@ participant-session:
   secure: ${PARTICIPANT_SESSION_COOKIE_SECURE:true}
   same-site: ${PARTICIPANT_SESSION_COOKIE_SAME_SITE:Lax}
   domain: ${PARTICIPANT_SESSION_COOKIE_DOMAIN:}
+# 문서는 SWAGGER_ENABLED=true일 때만 연다(기본은 꺼짐). 켜면 /swagger-ui.html과 /v3/api-docs가 열린다. Gateway는 이 경로를 라우팅하지 않는다
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}
+    groups-order: asc

@@ -1,6 +1,8 @@
 package team.startup.expo.domain.training.presentation
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.PostMapping
@@ -28,6 +30,8 @@ import team.startup.expo.domain.training.service.ResolveTraineeService
  * 서비스 간 호출 전용이다. `X-Internal-Token`이 필요하며 gateway에 라우팅하지 않는다.
  * 연수 번호(`trainingId`)는 URL이나 쿼리에 남지 않도록 요청 본문으로만 받는다.
  */
+@Tag(name = "내부: 연수자", description = "연수자 조회, 등록, 참가자와의 연결")
+@SecurityRequirement(name = "internalToken")
 @RestController
 @RequestMapping("/internal/trainees")
 class InternalTraineeController(

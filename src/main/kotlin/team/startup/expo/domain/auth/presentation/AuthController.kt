@@ -1,6 +1,8 @@
 package team.startup.expo.domain.auth.presentation
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -21,6 +23,7 @@ import team.startup.expo.domain.auth.service.SignInService
 import team.startup.expo.domain.auth.service.SignUpService
 import team.startup.expo.global.security.AdminPrincipal
 
+@Tag(name = "관리자 인증", description = "가입, 로그인, 토큰 재발급, 로그아웃")
 @RestController
 @RequestMapping("/auth")
 class AuthController(
@@ -51,6 +54,7 @@ class AuthController(
     ): TokenResDto = reissueTokenService.execute(refreshToken)
 
     @Operation(summary = "로그아웃", description = "저장된 refresh token을 삭제합니다.")
+    @SecurityRequirement(name = "bearerAuth")
     @DeleteMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun logout(

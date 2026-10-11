@@ -1,6 +1,8 @@
 package team.startup.expo.domain.auth.presentation
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.http.HttpHeaders
@@ -31,6 +33,7 @@ import java.time.ZoneOffset
  * 행사에 신청하는 참가자의 전화 인증 세션이다. 관리자 로그인(`/auth`)과 별개이며 사용자에게 공개된 경로다.
  * 세션 ID는 `HttpOnly` 쿠키로만 오가고 전화번호는 URL이나 쿠키에 싣지 않는다.
  */
+@Tag(name = "참가자 전화 인증 세션", description = "행사 신청자의 전화 인증과 HttpOnly 쿠키 세션")
 @RestController
 @RequestMapping("/participant-auth")
 class ParticipantAuthController(
@@ -67,6 +70,7 @@ class ParticipantAuthController(
         summary = "참가자 세션 확인",
         description = "쿠키의 세션이 이 박람회에 유효하면 200입니다. 쿠키가 없으면 401 SESSION_REQUIRED, 만료되었으면 401 SESSION_EXPIRED입니다.",
     )
+    @SecurityRequirement(name = "participantSession")
     @GetMapping("/session")
     fun session(
         @RequestParam("expoId") expoId: String,
@@ -79,6 +83,7 @@ class ParticipantAuthController(
     }
 
     @Operation(summary = "참가자 세션 로그아웃", description = "세션을 폐기하고 쿠키를 지웁니다. 쿠키가 없거나 이미 없는 세션이어도 204입니다.")
+    @SecurityRequirement(name = "participantSession")
     @DeleteMapping("/session")
     fun logout(request: HttpServletRequest): ResponseEntity<Void> {
         logoutParticipantSessionService.execute(cookies.read(request))
