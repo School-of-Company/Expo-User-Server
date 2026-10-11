@@ -56,6 +56,30 @@ interface StandardParticipantRepository : JpaRepository<StandardParticipant, Lon
         pageable: Pageable,
     ): List<StandardParticipant>
 
+    /**
+     * 커서 목록을 조건으로 거른다. 빈 문자열은 그 조건을 쓰지 않는다는 뜻이다. [namePattern]은 소문자 `LIKE` 패턴(이스케이프 문자 `!`),
+     * [digits]는 하이픈을 뺀 숫자이며 비어 있으면 번호는 찾지 않는다. 본인 번호가 없으면 대표자의 번호로 찾는다.
+     */
+    @Query(
+        value =
+            "SELECT p.* FROM tb_standard_participant p LEFT JOIN tb_standard_participant r ON r.id = p.representative_id " +
+                "WHERE p.expo_id = :expoId AND p.id > :cursor " +
+                "AND (:occupation = '' OR p.occupation = :occupation) " +
+                "AND (:namePattern = '' OR lower(p.name) LIKE :namePattern ESCAPE '!' " +
+                "OR (:digits <> '' AND regexp_replace(coalesce(p.phone_number, r.phone_number, ''), '[^0-9]', '', 'g') " +
+                "LIKE '%' || :digits || '%')) " +
+                "ORDER BY p.id LIMIT :limit",
+        nativeQuery = true,
+    )
+    fun searchByExpoId(
+        @Param("expoId") expoId: String,
+        @Param("cursor") cursor: Long,
+        @Param("occupation") occupation: String,
+        @Param("namePattern") namePattern: String,
+        @Param("digits") digits: String,
+        @Param("limit") limit: Int,
+    ): List<StandardParticipant>
+
     fun findBriefsByExpoIdAndIdIn(
         expoId: String,
         ids: Collection<Long>,

@@ -1,10 +1,10 @@
 package team.startup.expo.domain.participation.service.impl
 
-import org.springframework.data.domain.PageRequest
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import team.startup.expo.domain.participation.presentation.dto.request.GetStandardParticipantBriefsReqDto
+import team.startup.expo.domain.participation.presentation.dto.request.StandardParticipantDetailPageReqDto
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantBriefResDto
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantDetailResDto
 import team.startup.expo.domain.participation.repository.StandardParticipantBriefView
@@ -12,11 +12,11 @@ import team.startup.expo.domain.participation.repository.StandardParticipantRepo
 import team.startup.expo.domain.participation.repository.StandardParticipantSurveyAnswerRepository
 import team.startup.expo.domain.participation.service.GetStandardParticipantDetailsService
 import team.startup.expo.domain.training.repository.TraineeRepository
-import team.startup.expo.global.dto.DetailPageReqDto
 import team.startup.expo.global.dto.DetailPageResDto
 import team.startup.expo.global.dto.InformationResDto
 import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.util.InformationJson
+import team.startup.expo.global.util.ParticipantSearch
 
 /**
  * Report 서비스의 엑셀 내보내기용 조회다. v1 `findByExpo`처럼 `id` 오름차순이고, 행사에 참가자가 없으면 빈 목록이다.
@@ -33,12 +33,19 @@ class GetStandardParticipantDetailsServiceImpl(
     @Transactional(readOnly = true)
     override fun page(
         expoId: String,
-        reqDto: DetailPageReqDto,
+        reqDto: StandardParticipantDetailPageReqDto,
     ): DetailPageResDto<StandardParticipantDetailResDto> {
         val size = reqDto.sizeOrDefault
         // 다음 페이지가 있는지 알려고 한 행 더 읽는다
         val rows =
-            standardParticipantRepository.findByExpoIdAndIdGreaterThanOrderById(expoId, reqDto.cursorOrZero, PageRequest.ofSize(size + 1))
+            standardParticipantRepository.searchByExpoId(
+                expoId = expoId,
+                cursor = reqDto.cursorOrZero,
+                occupation = reqDto.occupation?.name.orEmpty(),
+                namePattern = ParticipantSearch.namePattern(reqDto.keyword),
+                digits = ParticipantSearch.digits(reqDto.keyword),
+                limit = size + 1,
+            )
         val hasNext = rows.size > size
         val participants = rows.take(size)
 

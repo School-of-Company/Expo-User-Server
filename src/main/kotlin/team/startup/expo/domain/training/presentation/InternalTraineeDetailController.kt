@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Size
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PathVariable
@@ -34,7 +35,7 @@ class InternalTraineeDetailController(
     @GetMapping("/expos/{expoId}/trainees/details")
     fun getTraineeDetails(
         @PathVariable("expoId") @Size(min = 1, max = 36) expoId: String,
-        @Valid @ModelAttribute reqDto: DetailPageReqDto,
+        @ParameterObject @Valid @ModelAttribute reqDto: DetailPageReqDto,
     ): DetailPageResDto<TraineeDetailItemResDto> = getTraineeDetailsService.page(expoId, reqDto)
 
     @Operation(summary = "연수자 단건 상세 조회", description = "연수자 한 명의 소속 박람회 id, 이름, 연수 번호, 신청 답변을 돌려줍니다. 없으면 404입니다.")
