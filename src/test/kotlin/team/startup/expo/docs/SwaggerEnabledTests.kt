@@ -1,19 +1,19 @@
 package team.startup.expo.docs
 
 import io.kotest.matchers.collections.shouldContain
-import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.TestPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import team.startup.expo.support.IntegrationTestSupport
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 
-/** `SWAGGER_ENABLED`를 켜면 문서가 열리고, 공개 API와 `/internal` 하위 경로가 그룹으로 나뉜다. */
+/** `SWAGGER_ENABLED`만 켜면 `/auth/v3/api-docs`가 열리고 `/internal` 하위 경로는 문서에서 빠진다. */
 @TestPropertySource(properties = ["springdoc.api-docs.enabled=true", "springdoc.swagger-ui.enabled=true"])
 class SwaggerEnabledTests : IntegrationTestSupport() {
     @Autowired
@@ -22,58 +22,56 @@ class SwaggerEnabledTests : IntegrationTestSupport() {
     private val mapper = JsonMapper.builder().build()
 
     @Test
-    fun `문서를 켜면 공개 그룹과 내부 그룹 문서가 인증 없이 열린다`() {
-        mockMvc.perform(get("/v3/api-docs/public")).andExpect(status().isOk)
-        mockMvc.perform(get("/v3/api-docs/internal")).andExpect(status().isOk)
+    fun `문서를 켜면 Gateway 접두사 아래 문서가 인증 없이 열리고 예전 경로는 닫혀 있다`() {
+        mockMvc.perform(get("/auth/v3/api-docs")).andExpect(status().isOk)
         // 문서 화면 진입 경로도 막히지 않는다(401이나 403이 아니다)
         val ui =
             mockMvc
-                .perform(get("/swagger-ui.html"))
+                .perform(get("/auth/swagger-ui.html"))
                 .andReturn()
                 .response.status
         check(ui != 401 && ui != 403) { "swagger-ui.html이 막혀 있다: $ui" }
+        mockMvc.perform(get("/v3/api-docs")).andExpect(status().isUnauthorized)
     }
 
     @Test
-    fun `공개 그룹에는 internal 경로가 없고 내부 그룹에는 internal 경로만 있다`() {
-        val publicPaths = paths("public")
-        val internalPaths = paths("internal")
-
-        publicPaths shouldContain "/auth"
-        publicPaths shouldContain "/participant-auth/verify"
-        publicPaths.none { it.startsWith("/internal") } shouldBe true
-        internalPaths shouldContain "/internal/standard-participants/verify"
-        internalPaths shouldContain "/internal/participant-sessions/resolve"
-        internalPaths.all { it.startsWith("/internal") } shouldBe true
-        internalPaths shouldNotContain "/auth"
+    fun `문서 경로는 GET만 열린다`() {
+        mockMvc.perform(post("/auth/v3/api-docs")).andExpect(status().isUnauthorized)
     }
 
     @Test
-    fun `문서에 인증 방식과 컨트롤러 태그가 표시된다`() {
-        val publicDoc = doc("public")
-        val internalDoc = doc("internal")
+    fun `기본으로 internal 경로와 그 경로의 인증 방식과 스키마가 문서에서 빠진다`() {
+        val doc = doc()
+        val paths = doc.path("paths").propertyNames().toList()
 
-        val schemes = publicDoc.path("components").path("securitySchemes")
-        (schemes.has("bearerAuth") && schemes.has("internalToken") && schemes.has("participantSession")) shouldBe true
-        // 내부 API는 X-Internal-Token, 관리자 API는 JWT를 요구한다고 표시된다
-        internalDoc
-            .path("paths")
-            .path("/internal/standard-participants/verify")
-            .path("post")
-            .path("security")
-            .toString() shouldBe """[{"internalToken":[]}]"""
-        publicDoc
+        paths shouldContain "/auth"
+        paths shouldContain "/participant-auth/verify"
+        paths.none { it.startsWith("/internal") } shouldBe true
+        val schemes = doc.path("components").path("securitySchemes")
+        (schemes.has("bearerAuth") && schemes.has("participantSession")) shouldBe true
+        schemes.has("internalToken") shouldBe false
+        // 내부 API에서만 쓰던 응답 스키마는 남지 않는다
+        doc.path("components").path("schemas").has("CancellationStatusResDto") shouldBe false
+        // 내부 API만 쓰던 태그도 남지 않는다
+        doc.path("tags").none { it.path("name").asString().startsWith("내부") } shouldBe true
+    }
+
+    @Test
+    fun `공개 API의 인증 방식과 태그가 표시된다`() {
+        val doc = doc()
+
+        doc
             .path("paths")
             .path("/admin/my")
             .path("get")
             .path("security")
             .toString() shouldBe """[{"bearerAuth":[]}]"""
-        publicDoc
+        doc
             .path("paths")
             .path("/auth/signin")
             .path("post")
             .has("security") shouldBe false
-        publicDoc
+        doc
             .path("paths")
             .path("/auth")
             .path("post")
@@ -82,42 +80,24 @@ class SwaggerEnabledTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `새 내부 API와 쿼리 조건이 문서에 나온다`() {
-        val internalDoc = doc("internal")
+    fun `공개 목록 API의 쿼리 DTO가 쿼리 파라미터로 펼쳐진다`() {
+        val names =
+            doc()
+                .path("paths")
+                .path("/participant/{expo_id}")
+                .path("get")
+                .path("parameters")
+                .filter { it.path("in").asString() == "query" }
+                .map { it.path("name").asString() }
 
-        paths("internal") shouldContain "/internal/standard-participants/cancellation-status"
-        internalDoc
-            .path("paths")
-            .path("/internal/standard-participants/cancellation-status")
-            .path("post")
-            .path("security")
-            .toString() shouldBe """[{"internalToken":[]}]"""
-        // GET의 쿼리 DTO는 펼쳐져 q와 occupation이 쿼리 파라미터로 보인다
-        queryParameters(internalDoc, "/internal/expos/{expoId}/standard-participants/details") shouldContain "q"
-        queryParameters(internalDoc, "/internal/expos/{expoId}/standard-participants/details") shouldContain "occupation"
-        queryParameters(internalDoc, "/internal/expos/{expoId}/standard-participants/details") shouldContain "cursor"
-        queryParameters(internalDoc, "/internal/expos/{expoId}/trainees/details") shouldContain "size"
+        names shouldContain "page"
     }
 
-    private fun queryParameters(
-        doc: JsonNode,
-        path: String,
-    ): List<String> =
-        doc
-            .path("paths")
-            .path(path)
-            .path("get")
-            .path("parameters")
-            .filter { it.path("in").asString() == "query" }
-            .map { it.path("name").asString() }
-
-    private fun doc(group: String): JsonNode =
+    private fun doc(): JsonNode =
         mapper.readTree(
             mockMvc
-                .perform(get("/v3/api-docs/$group"))
+                .perform(get("/auth/v3/api-docs"))
                 .andReturn()
                 .response.contentAsString,
         )
-
-    private fun paths(group: String): List<String> = doc(group).path("paths").propertyNames().toList()
 }
