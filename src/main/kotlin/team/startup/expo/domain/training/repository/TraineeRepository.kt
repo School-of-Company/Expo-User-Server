@@ -2,11 +2,23 @@ package team.startup.expo.domain.training.repository
 
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import team.startup.expo.domain.training.entity.Trainee
 
 interface TraineeRepository : JpaRepository<Trainee, Long> {
+    /** 사전등록 참가자에 이어진 연수자. 참가자 한 명에 연수자 한 명이다. */
+    fun findByStandardParticipantId(standardParticipantId: Long): Trainee?
+
+    /** 연수원 아이디가 비어 있을 때만 채운다. 이미 값이 있으면 아무것도 바꾸지 않고 0을 돌려준다. */
+    @Modifying
+    @Query("UPDATE Trainee t SET t.trainingId = :trainingId WHERE t.id = :id AND t.trainingId IS NULL")
+    fun fillTrainingIdIfEmpty(
+        @Param("id") id: Long,
+        @Param("trainingId") trainingId: String,
+    ): Int
+
     /** 저장된 표기와 정확히 같은 번호. `(expo_id, phone_number)` 유일 인덱스를 탄다. */
     fun findByExpoIdAndPhoneNumber(
         expoId: String,

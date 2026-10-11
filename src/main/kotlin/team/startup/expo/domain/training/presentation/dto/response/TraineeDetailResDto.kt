@@ -6,6 +6,6 @@ data class TraineeDetailResDto(
     val traineeId: Long,
     val expoId: String,
     val name: String,
-    val trainingId: String,
+    val trainingId: String?,
     val information: InformationResDto,
 )

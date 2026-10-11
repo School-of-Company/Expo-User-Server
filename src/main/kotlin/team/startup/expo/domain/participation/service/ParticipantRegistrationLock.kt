@@ -21,6 +21,9 @@ class ParticipantRegistrationLock(
 ) {
     fun lockRequest(requestId: String) = lock(REQUEST_NAMESPACE, requestId)
 
+    /** 같은 참가자의 연수자를 동시에 처음 만들지 못하게 한다. 요청 키, 전화번호, 연수 번호 lock과 한 요청이 함께 잡지 않는다. */
+    fun lockParticipant(participantId: Long) = lock(PARTICIPANT_NAMESPACE, participantId.toString())
+
     fun lockPhone(
         expoId: String,
         digits: String,
@@ -42,5 +45,6 @@ class ParticipantRegistrationLock(
         const val PHONE_NAMESPACE = 27
         const val TRAINING_ID_NAMESPACE = 28
         const val REQUEST_NAMESPACE = 29
+        const val PARTICIPANT_NAMESPACE = 30
     }
 }

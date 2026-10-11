@@ -135,7 +135,7 @@ class RecordEntryServiceImpl(
             id = trainee.id!!,
             name = trainee.name,
             phoneNumber = trainee.phoneNumber,
-            notificationPhoneNumber = trainee.phoneNumber,
+            notificationPhoneNumber = trainee.notificationPhoneNumber ?: trainee.phoneNumber,
             personalInformationStatus = trainee.personalInformationStatus,
             participationType = ParticipationType.TRAINEE,
             occupation = null,

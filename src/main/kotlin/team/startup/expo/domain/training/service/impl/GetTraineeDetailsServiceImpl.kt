@@ -39,6 +39,7 @@ class GetTraineeDetailsServiceImpl(
                     name = it.name,
                     trainingId = it.trainingId,
                     phoneNumber = it.phoneNumber,
+                    notificationPhoneNumber = it.notificationPhoneNumber ?: it.phoneNumber,
                     personalInformationStatus = it.personalInformationStatus,
                     applicationType = it.applicationType,
                     information =

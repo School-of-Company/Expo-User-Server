@@ -29,10 +29,12 @@ class Trainee(
     val expoId: String,
     @field:Column(nullable = false, length = 10)
     val name: String,
-    @field:Column(name = "phone_number", nullable = false, length = 15)
-    val phoneNumber: String,
-    @field:Column(name = "training_id", nullable = false, length = 15)
-    val trainingId: String,
+    // 참가자에서 이어 만든 연수자는 번호가 없고 문자는 notificationPhoneNumber로 간다
+    @field:Column(name = "phone_number", length = 15)
+    val phoneNumber: String?,
+    // 연수원 아이디. 참가자에서 이어 만든 연수자는 아직 모를 수 있다
+    @field:Column(name = "training_id", length = 15)
+    val trainingId: String?,
     @field:JdbcTypeCode(SqlTypes.JSON)
     @field:Column(name = "information_json", columnDefinition = "jsonb")
     val informationJson: String? = null,
@@ -52,4 +54,10 @@ class Trainee(
     @field:JdbcTypeCode(SqlTypes.JSON)
     @field:Column(name = "information_questions", columnDefinition = "jsonb")
     val informationQuestions: String? = null,
+    // 문자를 받을 번호. 이어 만든 연수자가 대표자나 본인 번호를 쓰도록 따로 둔다. 없으면 phoneNumber로 보낸다
+    @field:Column(name = "notification_phone_number", length = 15)
+    val notificationPhoneNumber: String? = null,
+    // 이어진 사전등록 참가자. 같은 박람회의 참가자와 1:1이며 이어지지 않은 연수자는 null이다
+    @field:Column(name = "standard_participant_id")
+    val standardParticipantId: Long? = null,
 )
