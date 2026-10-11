@@ -17,6 +17,15 @@ interface StandardParticipantRepository : JpaRepository<StandardParticipant, Lon
     /** 대표자에 딸린 동행자를 등록 순서대로 읽는다. */
     fun findAllByRepresentativeIdOrderById(representativeId: Long): List<StandardParticipant>
 
+    /** 연결된 연수자의 등록 답변 원천을 한 번에 읽는다. 참가자 엔티티 전체를 읽지 않고 답변 열만 가져온다. */
+    @Query(
+        "select p.id as id, p.expoId as expoId, p.informationJson as informationJson, " +
+            "p.informationQuestions as informationQuestions from StandardParticipant p where p.id in :ids",
+    )
+    fun findRegistrationsByIdIn(
+        @Param("ids") ids: Collection<Long>,
+    ): List<ParticipantRegistrationView>
+
     /** 대표자 본인과 그 대표자의 동행자를 `id` 순서로 읽는다. 첫 파라미터는 대표자의 `id`, 둘째는 같은 값이다. */
     fun findAllByIdOrRepresentativeIdOrderById(
         id: Long,
