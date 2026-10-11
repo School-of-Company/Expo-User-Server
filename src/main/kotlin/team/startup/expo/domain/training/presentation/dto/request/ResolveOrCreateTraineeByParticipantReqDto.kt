@@ -12,7 +12,7 @@ data class ResolveOrCreateTraineeByParticipantReqDto(
     @field:NotNull
     @field:Positive
     val participantId: Long?,
-    /** 연수원 아이디. 새로 이을 때만 저장하고 모르면 비운다. 이미 이어진 연수자의 값은 덮어쓰지 않는다. */
+    /** 연수원 아이디. 모르면 비운다. 이미 이어진 연수자는 비어 있을 때만 이 첫 값으로 채우고 있는 값은 덮어쓰지 않는다. */
     @field:Size(min = 1, max = 15)
     val trainingId: String? = null,
     /** 명찰 출력에 쓴다. 새로 이을 때만 저장하며 없으면 참가자의 소속을 쓴다. */

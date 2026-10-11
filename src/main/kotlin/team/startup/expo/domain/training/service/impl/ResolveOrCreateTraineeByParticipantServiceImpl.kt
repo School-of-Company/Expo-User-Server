@@ -21,7 +21,9 @@ import java.time.LocalDateTime
  * 연수에서도 같은 연수자를 다시 쓴다(참가자와 연수자는 1:1이다). 번호로 사람을 합치지 않는다. 대표자와 동행자가 같은 수신
  * 번호를 써도 참가자마다 다른 연수자가 되도록, 새 연수자는 전화번호를 비우고 문자 번호만(`notificationPhoneNumber`) 갖는다.
  *
- * 이미 이어진 연수자는 요청 값으로 덮어쓰지 않고 그대로 돌려준다(연수원 아이디를 고치는 일은 이 호출의 범위가 아니다).
+ * 이미 이어진 연수자는 그대로 돌려주되, 연수원 아이디가 비어 있고 요청에 값이 있으면 그 첫 값만 채운다(연수원 아이디가 없는
+ * 폼으로 먼저 이은 뒤 다른 연수 신청에서 처음 수집하는 경우). 이미 값이 있으면 다른 값이 와도 덮어쓰지 않으며, 연수원
+ * 아이디를 고치는 일은 이 호출의 범위가 아니다. 채우기는 같은 참가자 lock 안에서 `training_id IS NULL`일 때만 한다.
  * 박람회 삭제 lock, 참가자 lock 순서로 잡아 삭제와 동시 최초 호출을 직렬화하고, 유일 제약(참가자당 연수자 하나)은 마지막
  * 안전망이다. 이름과 개인정보 동의는 참가자에서 가져온다.
  */
@@ -43,7 +45,9 @@ class ResolveOrCreateTraineeByParticipantServiceImpl(
             standardParticipantRepository.findByIdAndExpoId(participantId, reqDto.expoId)
                 ?: throw ExpectedException(HttpStatus.NOT_FOUND, "행사 참가자를 찾지 못 했습니다.")
         traineeRepository.findByStandardParticipantId(participantId)?.let {
-            return ResolveOrCreateTraineeByParticipantResDto(requireNotNull(it.id), created = false)
+            val traineeId = requireNotNull(it.id)
+            reqDto.trainingId?.let { trainingId -> traineeRepository.fillTrainingIdIfEmpty(traineeId, trainingId) }
+            return ResolveOrCreateTraineeByParticipantResDto(traineeId, created = false)
         }
 
         // 동행자는 번호가 없어 문자를 대표자 번호로 보낸다(입장 기록 응답과 같은 규칙)
