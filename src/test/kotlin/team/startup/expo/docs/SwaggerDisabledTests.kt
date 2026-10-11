@@ -14,9 +14,11 @@ class SwaggerDisabledTests : IntegrationTestSupport() {
 
     @Test
     fun `기본 설정에서는 API 문서와 문서 화면이 열리지 않고 인증이 필요하다`() {
+        mockMvc.perform(get("/auth/v3/api-docs")).andExpect(status().isUnauthorized)
+        mockMvc.perform(get("/auth/swagger-ui.html")).andExpect(status().isUnauthorized)
+        mockMvc.perform(get("/auth/swagger-ui/index.html")).andExpect(status().isUnauthorized)
+        // 예전 경로도 열려 있지 않다
         mockMvc.perform(get("/v3/api-docs")).andExpect(status().isUnauthorized)
-        mockMvc.perform(get("/v3/api-docs/public")).andExpect(status().isUnauthorized)
         mockMvc.perform(get("/swagger-ui.html")).andExpect(status().isUnauthorized)
-        mockMvc.perform(get("/swagger-ui/index.html")).andExpect(status().isUnauthorized)
     }
 }
