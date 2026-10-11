@@ -1,6 +1,8 @@
 package team.startup.expo.domain.participation.presentation
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.constraints.Size
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -11,6 +13,8 @@ import org.springframework.web.bind.annotation.RestController
 import team.startup.expo.domain.participation.service.PurgeExpoDataService
 
 /** 서비스 간 호출 전용이다. `X-Internal-Token`이 필요하며 gateway에 라우팅하지 않는다. */
+@Tag(name = "내부: 박람회 데이터 정리", description = "박람회 삭제용 참가자 데이터 정리")
+@SecurityRequirement(name = "internalToken")
 @RestController
 @RequestMapping("/internal/expos")
 class InternalExpoController(

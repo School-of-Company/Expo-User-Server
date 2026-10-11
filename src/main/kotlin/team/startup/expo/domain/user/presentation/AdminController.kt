@@ -1,6 +1,8 @@
 package team.startup.expo.domain.user.presentation
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.security.SecurityRequirement
+import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -19,6 +21,8 @@ import team.startup.expo.domain.user.service.RefuseAdminService
 import team.startup.expo.domain.user.service.WithdrawalAdminService
 import team.startup.expo.global.security.AdminPrincipal
 
+@Tag(name = "관리자 관리", description = "내 정보, 승인 대기 목록, 승인, 거절, 탈퇴")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/admin")
 class AdminController(
