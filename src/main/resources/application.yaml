@@ -8,6 +8,10 @@ spring:
           default:
             connect-timeout: 2000
             read-timeout: 3000
+          # 인증번호 문자 발송은 외부 문자 게이트웨이를 기다려 기본 읽기 제한보다 오래 걸릴 수 있다
+          expo-notification-server:
+            connect-timeout: 2000
+            read-timeout: 10000
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/expo_user}
     username: ${DB_USERNAME:expo_user}
@@ -43,6 +47,8 @@ clients:
   expo:
     url: ${EXPO_URL:}
     internal-token: ${EXPO_INTERNAL_TOKEN}
+  notification:
+    url: ${NOTIFICATION_URL:}
 qr-sms-sent:
   topic: ${KAFKA_QR_SMS_SENT_TOPIC:notification.qr-sms.sent}
   dead-letter-topic: ${KAFKA_QR_SMS_SENT_DEAD_LETTER_TOPIC:notification.qr-sms.sent.dlt}
@@ -55,3 +61,10 @@ registration-events:
   relay:
     enabled: true
     interval-ms: 2000
+participant-session:
+  ttl: ${PARTICIPANT_SESSION_TTL:30m}
+  used-code-ttl: ${PARTICIPANT_OTP_USED_TTL:10m}
+  cookie-name: ${PARTICIPANT_SESSION_COOKIE_NAME:PARTICIPANT_SESSION}
+  secure: ${PARTICIPANT_SESSION_COOKIE_SECURE:true}
+  same-site: ${PARTICIPANT_SESSION_COOKIE_SAME_SITE:Lax}
+  domain: ${PARTICIPANT_SESSION_COOKIE_DOMAIN:}
