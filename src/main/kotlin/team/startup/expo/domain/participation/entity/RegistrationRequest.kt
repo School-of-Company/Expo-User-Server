@@ -32,6 +32,9 @@ class RegistrationRequest(
     // 응답에 돌려준 참가자 ID 목록(JSON 배열). 이 컬럼이 생기기 전의 행은 null이다
     @field:Column(name = "participant_ids")
     val participantIds: String? = null,
+    // 응답에 돌려준 대표자 포함 일행 전체의 참가자 ID 목록(JSON 배열). 이 컬럼이 생기기 전의 행은 null이다
+    @field:Column(name = "group_participant_ids")
+    val groupParticipantIds: String? = null,
     @field:Column(name = "created_at", nullable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
 )

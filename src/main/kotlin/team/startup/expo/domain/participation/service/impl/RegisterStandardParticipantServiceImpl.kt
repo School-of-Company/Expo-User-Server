@@ -46,8 +46,20 @@ class RegisterStandardParticipantServiceImpl(
                     val phoneNumber = if (it == created.participantId) created.phoneNumber else null
                     registrationOutboxWriter.standardCreated(reqDto.expoId, it, phoneNumber)
                 }
-                Registration(created.participantId, created.phoneNumber, created.created, created.participants.map { it.id })
+                Registration(
+                    created.participantId,
+                    created.phoneNumber,
+                    created.created,
+                    created.participants.map { it.id },
+                    created.groupParticipantIds,
+                )
             }
-        return CreateStandardParticipantResDto(registration.id, registration.phoneNumber, registration.created, registration.participantIds)
+        return CreateStandardParticipantResDto(
+            participantId = registration.id,
+            phoneNumber = registration.phoneNumber,
+            created = registration.created,
+            participantIds = registration.participantIds,
+            groupParticipantIds = registration.groupParticipantIds,
+        )
     }
 }
