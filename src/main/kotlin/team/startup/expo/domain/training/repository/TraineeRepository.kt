@@ -11,6 +11,9 @@ interface TraineeRepository : JpaRepository<Trainee, Long> {
     /** 사전등록 참가자에 이어진 연수자. 참가자 한 명에 연수자 한 명이다. */
     fun findByStandardParticipantId(standardParticipantId: Long): Trainee?
 
+    /** 참가자 여럿에 이어진 연수자를 한 번에 읽는다. 연결이 없는 참가자는 결과에 나오지 않는다. */
+    fun findByStandardParticipantIdIn(standardParticipantIds: Collection<Long>): List<TraineeParticipantLinkView>
+
     /** 연수원 아이디가 비어 있을 때만 채운다. 이미 값이 있으면 아무것도 바꾸지 않고 0을 돌려준다. */
     @Modifying
     @Query("UPDATE Trainee t SET t.trainingId = :trainingId WHERE t.id = :id AND t.trainingId IS NULL")

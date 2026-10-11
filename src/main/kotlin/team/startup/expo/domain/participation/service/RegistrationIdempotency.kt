@@ -47,7 +47,12 @@ class RegistrationIdempotency(
             val participantIds =
                 it.participantIds?.let { json -> jsonMapper.readValue(json, object : TypeReference<List<Long>>() {}) }
                     ?: listOf(it.participantId)
-            return Registration(it.participantId, it.phoneNumber, it.created, participantIds)
+            // 일행 전체 목록은 처음 응답을 그대로 돌려준다(그 사이 다른 신청이 동행자를 더해도 이 신청의 결과는 바뀌지 않는다).
+            // 이 컬럼이 생기기 전의 행은 보관한 값이 없어 문자 대상 목록으로 대신한다
+            val groupParticipantIds =
+                it.groupParticipantIds?.let { json -> jsonMapper.readValue(json, object : TypeReference<List<Long>>() {}) }
+                    ?: participantIds
+            return Registration(it.participantId, it.phoneNumber, it.created, participantIds, groupParticipantIds)
         }
 
         val registration = action()
@@ -61,6 +66,7 @@ class RegistrationIdempotency(
                 phoneNumber = registration.phoneNumber,
                 created = registration.created,
                 participantIds = jsonMapper.writeValueAsString(registration.participantIds),
+                groupParticipantIds = jsonMapper.writeValueAsString(registration.groupParticipantIds),
             ),
         )
         return registration
