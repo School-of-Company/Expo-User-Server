@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import team.startup.expo.domain.participation.presentation.dto.request.CreateStandardParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.GetManagedParticipantsReqDto
+import team.startup.expo.domain.participation.presentation.dto.request.GetParticipantQrReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.GetStandardParticipantNamesReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.IncreaseSmsTryTimeReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.RecordEntryReqDto
@@ -27,12 +28,14 @@ import team.startup.expo.domain.participation.presentation.dto.response.CreateSt
 import team.startup.expo.domain.participation.presentation.dto.response.GetManagedParticipantsResDto
 import team.startup.expo.domain.participation.presentation.dto.response.GetSurveyAnswerEventResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ManagedParticipantResDto
+import team.startup.expo.domain.participation.presentation.dto.response.ParticipantQrResDto
 import team.startup.expo.domain.participation.presentation.dto.response.RecordEntryResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveStandardParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveTraineeByParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantNameResDto
 import team.startup.expo.domain.participation.service.GetManagedParticipantsService
+import team.startup.expo.domain.participation.service.GetParticipantQrService
 import team.startup.expo.domain.participation.service.GetStandardParticipantNamesService
 import team.startup.expo.domain.participation.service.GetSurveyAnswerEventService
 import team.startup.expo.domain.participation.service.IncreaseSmsTryTimeService
@@ -64,6 +67,7 @@ class InternalParticipantController(
     private val resolveTraineeByParticipantService: ResolveTraineeByParticipantService,
     private val getManagedParticipantsService: GetManagedParticipantsService,
     private val selectManagedParticipantsService: SelectManagedParticipantsService,
+    private val getParticipantQrService: GetParticipantQrService,
 ) {
     @Operation(summary = "일반 참가자 id 조회", description = "박람회 id와 전화번호로 일반 참가자 id를 찾습니다. 없으면 404입니다.")
     @PostMapping("/standard-participants/resolve")
@@ -169,4 +173,16 @@ class InternalParticipantController(
     fun resolveTraineeByParticipant(
         @Valid @RequestBody reqDto: ResolveTraineeByParticipantReqDto,
     ): ResolveTraineeByParticipantResDto = resolveTraineeByParticipantService.execute(reqDto)
+
+    @Operation(
+        summary = "참가자 QR 값 조회",
+        description =
+            "참가자가 그 박람회에서 요청한 대표자의 일행(대표자 본인 포함)일 때만 participantId와 code를 돌려줍니다. " +
+                "없는 참가자, 다른 박람회, 다른 대표자의 일행, 대표자가 아닌 representativeId는 구분 없이 404입니다. " +
+                "아무것도 기록하지 않고 code는 로그나 오류 메시지에 남기지 않습니다. 확정 여부 판단은 호출하는 쪽 책임입니다.",
+    )
+    @PostMapping("/standard-participants/qr")
+    fun getParticipantQr(
+        @Valid @RequestBody reqDto: GetParticipantQrReqDto,
+    ): ParticipantQrResDto = getParticipantQrService.execute(reqDto)
 }
