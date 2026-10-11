@@ -10,6 +10,9 @@ import team.startup.expo.domain.participation.presentation.dto.response.Particip
 import java.time.LocalDate
 
 interface StandardParticipantParticipationRepository : JpaRepository<StandardParticipantParticipation, Long> {
+    /** 날짜와 상관없이 그 참가자의 입장 기록이 있는지 확인한다. */
+    fun existsByStandardParticipantId(standardParticipantId: Long): Boolean
+
     /** 그날 입장한 참가자만 참가자 id 순서로 조회한다. 참가자 한 명은 하루에 한 번만 입장 기록이 생긴다. */
     @Query(
         value =
