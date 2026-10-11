@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PathVariable
@@ -24,6 +25,6 @@ class ParticipantController(
     @GetMapping("/{expo_id}")
     fun getParticipants(
         @PathVariable("expo_id") expoId: String,
-        @Valid @ModelAttribute reqDto: GetParticipantReqDto,
+        @ParameterObject @Valid @ModelAttribute reqDto: GetParticipantReqDto,
     ): GetParticipantResDto = getParticipantsService.execute(expoId, reqDto)
 }

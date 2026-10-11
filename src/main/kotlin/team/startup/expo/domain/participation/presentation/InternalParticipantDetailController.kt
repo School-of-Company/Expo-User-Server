@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Size
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PathVariable
@@ -40,7 +41,7 @@ class InternalParticipantDetailController(
     @GetMapping("/expos/{expoId}/standard-participants/details")
     fun getStandardParticipantDetails(
         @PathVariable("expoId") @Size(min = 1, max = 36) expoId: String,
-        @Valid @ModelAttribute reqDto: StandardParticipantDetailPageReqDto,
+        @ParameterObject @Valid @ModelAttribute reqDto: StandardParticipantDetailPageReqDto,
     ): DetailPageResDto<StandardParticipantDetailResDto> = getStandardParticipantDetailsService.page(expoId, reqDto)
 
     @Operation(

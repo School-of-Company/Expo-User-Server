@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PathVariable
@@ -24,6 +25,6 @@ class TraineeController(
     @GetMapping("/{expo_id}")
     fun getTrainees(
         @PathVariable("expo_id") expoId: String,
-        @Valid @ModelAttribute reqDto: GetTraineeReqDto,
+        @ParameterObject @Valid @ModelAttribute reqDto: GetTraineeReqDto,
     ): List<GetTraineeResDto> = getTraineesService.execute(expoId, reqDto)
 }
