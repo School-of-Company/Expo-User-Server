@@ -8,6 +8,7 @@ import org.hamcrest.Matchers.startsWith
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.MediaType
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.test.web.servlet.MockMvc
@@ -39,11 +40,15 @@ class SignInTests : IntegrationTestSupport() {
     @Autowired
     private lateinit var objectMapper: ObjectMapper
 
+    @Autowired
+    private lateinit var redis: StringRedisTemplate
+
     private var acceptedAdminId = 0L
 
     @BeforeEach
     fun setUp() {
         clearAdmins()
+        redis.keys("signin_failures:*").takeIf { it.isNotEmpty() }?.let(redis::delete)
         acceptedAdminId = adminRepository.save(admin("accepted", "01011110001").apply { accept() }).id!!
         adminRepository.save(admin("pending", "01011110002"))
     }
@@ -107,13 +112,54 @@ class SignInTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `닉네임이 없으면 404이다`() {
-        signIn("nobody").andExpect(status().isNotFound)
+    fun `없는 닉네임과 틀린 비밀번호는 구분할 수 없는 같은 400이다`() {
+        val unknown =
+            signIn("nobody")
+                .andExpect(status().isBadRequest)
+                .andReturn()
+                .response.contentAsString
+        val wrongPassword =
+            signIn("accepted", password = "Wrong1234!")
+                .andExpect(status().isBadRequest)
+                .andReturn()
+                .response.contentAsString
+
+        unknown shouldBe wrongPassword
     }
 
     @Test
-    fun `비밀번호가 틀리면 400이다`() {
-        signIn("accepted", password = "Wrong1234!").andExpect(status().isBadRequest)
+    fun `같은 닉네임으로 계속 실패하면 비밀번호가 맞아도 429로 막고 실패 횟수에는 만료 시간이 있다`() {
+        repeat(MAX_FAILURES) { signIn("accepted", password = "Wrong1234!").andExpect(status().isBadRequest) }
+
+        signIn("accepted", password = "Wrong1234!").andExpect(status().isTooManyRequests)
+        // 잠긴 동안은 맞는 비밀번호도 토큰을 주지 않는다
+        signIn("accepted").andExpect(status().isTooManyRequests).andExpect(jsonPath("$.accessToken").doesNotExist())
+        val keys = redis.keys("signin_failures:*")
+        keys.size shouldBe 1
+        (redis.getExpire(keys.single()) > 0) shouldBe true
+    }
+
+    @Test
+    fun `없는 닉네임도 같은 방식으로 제한되어 제한 여부로 계정 존재를 알 수 없다`() {
+        repeat(MAX_FAILURES) { signIn("nobody").andExpect(status().isBadRequest) }
+
+        signIn("nobody").andExpect(status().isTooManyRequests)
+    }
+
+    @Test
+    fun `한 닉네임의 제한은 다른 닉네임에 영향을 주지 않는다`() {
+        repeat(MAX_FAILURES) { signIn("accepted", password = "Wrong1234!").andExpect(status().isBadRequest) }
+
+        signIn("pending").andExpect(status().isForbidden)
+    }
+
+    @Test
+    fun `로그인에 성공하면 실패 횟수가 지워진다`() {
+        repeat(MAX_FAILURES - 1) { signIn("accepted", password = "Wrong1234!").andExpect(status().isBadRequest) }
+        signIn("accepted").andExpect(status().isOk)
+
+        repeat(MAX_FAILURES - 1) { signIn("accepted", password = "Wrong1234!").andExpect(status().isBadRequest) }
+        signIn("accepted").andExpect(status().isOk)
     }
 
     @Test
@@ -162,6 +208,7 @@ class SignInTests : IntegrationTestSupport() {
 
     private companion object {
         const val PASSWORD = "Passw0rd!"
+        const val MAX_FAILURES = 5
 
         // 노션 명세: yyyy-MM-dd'T'HH:mm:ss (소수점 초 없음)
         const val EXPIRES_IN_PATTERN = "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}$"

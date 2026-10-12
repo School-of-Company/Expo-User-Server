@@ -61,6 +61,10 @@ registration-events:
   relay:
     enabled: true
     interval-ms: 2000
+# 관리자 로그인: 같은 닉네임으로 lock-duration 안에 max-failures번 실패하면 그 시간 동안 막는다
+signin:
+  max-failures: ${SIGNIN_MAX_FAILURES:5}
+  lock-duration: ${SIGNIN_LOCK_DURATION:15m}
 participant-session:
   ttl: ${PARTICIPANT_SESSION_TTL:30m}
   used-code-ttl: ${PARTICIPANT_OTP_USED_TTL:10m}
