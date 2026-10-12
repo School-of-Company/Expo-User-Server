@@ -41,7 +41,12 @@ class AuthController(
         signUpService.execute(reqDto)
     }
 
-    @Operation(summary = "로그인")
+    @Operation(
+        summary = "로그인",
+        description =
+            "없는 닉네임과 틀린 비밀번호는 구분 없이 같은 400이고, 승인 전 관리자는 비밀번호가 맞을 때만 403입니다. 같은 닉네임으로 " +
+                "짧은 시간에 여러 번 실패하면 비밀번호가 맞아도 429로 잠시 막습니다.",
+    )
     @PostMapping("/signin")
     fun signIn(
         @Valid @RequestBody reqDto: SignInReqDto,
