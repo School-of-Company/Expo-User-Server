@@ -4,6 +4,7 @@ import io.swagger.v3.oas.models.Components
 import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.info.Info
 import io.swagger.v3.oas.models.security.SecurityScheme
+import io.swagger.v3.oas.models.servers.Server
 import org.springdoc.core.customizers.OpenApiCustomizer
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
@@ -20,6 +21,8 @@ class SwaggerConfig {
     @Bean
     fun openApi(): OpenAPI =
         OpenAPI()
+            // Gateway는 프록시할 때 Host를 인스턴스 주소로 바꾼다. 요청의 Host로 서버 주소를 만들면 내부 주소가 문서에 나오므로 상대 경로로 고정한다
+            .servers(listOf(Server().url("/")))
             .info(
                 Info()
                     .title("Expo User Server API")

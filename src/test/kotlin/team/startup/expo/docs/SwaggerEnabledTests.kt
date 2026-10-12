@@ -93,6 +93,20 @@ class SwaggerEnabledTests : IntegrationTestSupport() {
         names shouldContain "page"
     }
 
+    @Test
+    fun `servers는 요청의 Host와 상관없이 상대 경로로 고정된다`() {
+        val servers =
+            mapper
+                .readTree(
+                    mockMvc
+                        .perform(get("/auth/v3/api-docs").header("Host", "10.0.0.5:18081"))
+                        .andReturn()
+                        .response.contentAsString,
+                ).path("servers")
+
+        servers.toString() shouldBe """[{"url":"/"}]"""
+    }
+
     private fun doc(): JsonNode =
         mapper.readTree(
             mockMvc
