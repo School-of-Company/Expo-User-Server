@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import team.startup.expo.domain.participation.presentation.dto.request.CreateStandardParticipantReqDto
+import team.startup.expo.domain.participation.presentation.dto.request.GetAdminCancellationStatusReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.GetCancellationStatusReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.GetManagedParticipantsReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.GetParticipantQrReqDto
@@ -25,6 +26,7 @@ import team.startup.expo.domain.participation.presentation.dto.request.ResolveSt
 import team.startup.expo.domain.participation.presentation.dto.request.ResolveTraineeByParticipantReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.SelectManagedParticipantsReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.VerifyStandardParticipantReqDto
+import team.startup.expo.domain.participation.presentation.dto.response.AdminCancellationStatusResDto
 import team.startup.expo.domain.participation.presentation.dto.response.CancellationStatusResDto
 import team.startup.expo.domain.participation.presentation.dto.response.CreateStandardParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.GetManagedParticipantsResDto
@@ -36,6 +38,7 @@ import team.startup.expo.domain.participation.presentation.dto.response.ResolveP
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveStandardParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveTraineeByParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantNameResDto
+import team.startup.expo.domain.participation.service.GetAdminCancellationStatusService
 import team.startup.expo.domain.participation.service.GetCancellationStatusService
 import team.startup.expo.domain.participation.service.GetManagedParticipantsService
 import team.startup.expo.domain.participation.service.GetParticipantQrService
@@ -72,6 +75,7 @@ class InternalParticipantController(
     private val selectManagedParticipantsService: SelectManagedParticipantsService,
     private val getParticipantQrService: GetParticipantQrService,
     private val getCancellationStatusService: GetCancellationStatusService,
+    private val getAdminCancellationStatusService: GetAdminCancellationStatusService,
 ) {
     @Operation(summary = "일반 참가자 id 조회", description = "박람회 id와 전화번호로 일반 참가자 id를 찾습니다. 없으면 404입니다.")
     @PostMapping("/standard-participants/resolve")
@@ -201,4 +205,16 @@ class InternalParticipantController(
     fun getCancellationStatus(
         @Valid @RequestBody reqDto: GetCancellationStatusReqDto,
     ): CancellationStatusResDto = getCancellationStatusService.execute(reqDto)
+
+    @Operation(
+        summary = "관리자 취소용 상태 조회",
+        description =
+            "관리자 취소 전에 참가자의 박람회 전체 입장 여부(entered)와 이어진 연수자(traineeLinked, linkedTraineeId)를 돌려줍니다. " +
+                "소유·대표자 확인과 전화번호는 없으며, 박람회 관리자 권한은 호출하는 신청 서비스가 이미 검증했다는 전제의 내부 읽기 전용 조회입니다. " +
+                "참가자·연수자·연결을 만들거나 기록하지 않고 잠그지도 않습니다. 없는 참가자와 다른 박람회의 참가자는 구분 없이 404입니다.",
+    )
+    @PostMapping("/standard-participants/admin-cancellation-status")
+    fun getAdminCancellationStatus(
+        @Valid @RequestBody reqDto: GetAdminCancellationStatusReqDto,
+    ): AdminCancellationStatusResDto = getAdminCancellationStatusService.execute(reqDto)
 }
