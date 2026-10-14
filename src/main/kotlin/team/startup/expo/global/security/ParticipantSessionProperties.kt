@@ -11,6 +11,8 @@ import java.time.Duration
  * - [usedCodeTtl]은 검증에 성공한 인증번호를 다시 쓰지 못하게 기억해 두는 시간이다. Notification의 인증번호 유효 시간
  *   이상이어야 같은 번호로 세션을 또 만들지 못한다.
  * - 쿠키는 기본이 `Secure`이고 `SameSite=Lax`다. 로컬 HTTP 개발에서만 [secure]를 끈다.
+ * - [phoneHashKey]는 인증한 전화번호를 집계용으로 저장할 때 해시에 쓰는 키다. 비어 있으면 내부 토큰에서 파생한 키를 쓴다. 이 값이나
+ *   내부 토큰을 바꾸면 이미 저장된 해시와 달라져 같은 번호가 한 번 더 세어질 수 있다.
  */
 @ConfigurationProperties(prefix = "participant-session")
 data class ParticipantSessionProperties(
@@ -20,6 +22,7 @@ data class ParticipantSessionProperties(
     val secure: Boolean = true,
     val sameSite: String = "Lax",
     val domain: String = "",
+    val phoneHashKey: String = "",
 ) {
     init {
         require(!ttl.isZero && !ttl.isNegative) { "participant-session.ttl must be positive" }

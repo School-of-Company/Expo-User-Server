@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service
 import team.startup.expo.domain.auth.model.IssuedParticipantSession
 import team.startup.expo.domain.auth.presentation.dto.request.VerifyParticipantCodeReqDto
 import team.startup.expo.domain.auth.service.ParticipantSessionService
+import team.startup.expo.domain.auth.service.PhoneVerificationRecorder
 import team.startup.expo.domain.auth.service.VerifyParticipantCodeService
 import team.startup.expo.global.client.expo.ExpoPeriodReader
 import team.startup.expo.global.client.notification.NotificationAuthSender
@@ -24,11 +25,16 @@ class VerifyParticipantCodeServiceImpl(
     private val expoPeriodReader: ExpoPeriodReader,
     private val notificationAuthSender: NotificationAuthSender,
     private val participantSessionService: ParticipantSessionService,
+    private val phoneVerificationRecorder: PhoneVerificationRecorder,
 ) : VerifyParticipantCodeService {
     override fun execute(reqDto: VerifyParticipantCodeReqDto): IssuedParticipantSession {
         expoPeriodReader.find(reqDto.expoId) ?: throw ExpectedException(HttpStatus.NOT_FOUND, "박람회를 찾지 못했습니다.")
         notificationAuthSender.verifyCode(reqDto.phoneNumber, reqDto.code)
-        return participantSessionService.issueIfCodeUnused(reqDto.expoId, reqDto.phoneNumber, reqDto.code)
-            ?: throw ExpectedException(HttpStatus.CONFLICT, "이미 사용한 인증번호입니다.")
+        val session =
+            participantSessionService.issueIfCodeUnused(reqDto.expoId, reqDto.phoneNumber, reqDto.code)
+                ?: throw ExpectedException(HttpStatus.CONFLICT, "이미 사용한 인증번호입니다.")
+        // 세션을 만든 인증만 집계에 센다(이미 쓴 코드로 되풀이한 요청은 위에서 거절된다)
+        phoneVerificationRecorder.record(reqDto.expoId, reqDto.phoneNumber)
+        return session
     }
 }
