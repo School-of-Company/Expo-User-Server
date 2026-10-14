@@ -18,7 +18,7 @@ import java.util.Base64
  * refresh token을 JWT로 만들면 gateway가 access token으로 받아들이게 된다.
  *
  * 토큰은 `<adminId>.<난수>` 형식이다. Redis에는 관리자당 정렬 집합(`refresh_tokens:<adminId>`) 하나를 두고, 원문이 아니라
- * SHA-256 해시를 멤버로, 만료 시각(초)을 점수로 저장한다. 현장에서 한 계정을 여러 기기가 함께 쓰므로 기기마다 토큰이 하나씩
+ * SHA-256 해시를 멤버로, 만료 시각(밀리초)을 점수로 저장한다. 현장에서 한 계정을 여러 기기가 함께 쓰므로 기기마다 토큰이 하나씩
  * 있고, 한 기기의 로그인이나 재발급은 다른 기기의 토큰에 영향을 주지 않는다. 소유자를 토큰에서 바로 알 수 있어 별도 색인이
  * 필요 없고, 확인과 교체는 키 하나에 대한 단일 스크립트라 [revoke]와 겹쳐도 폐기된 토큰이 되살아나지 않는다.
  *
@@ -41,8 +41,8 @@ class RefreshTokenServiceImpl(
             issueScript,
             listOf(key(adminId)),
             hash(rawToken),
-            epochSeconds(expiresAt).toString(),
-            nowSeconds().toString(),
+            epochMillis(expiresAt).toString(),
+            nowMillis().toString(),
             properties.refreshTokenTtl.seconds.toString(),
             properties.maxRefreshTokens.toString(),
         )
@@ -52,7 +52,7 @@ class RefreshTokenServiceImpl(
     override fun findAdminId(rawToken: String): Long? {
         val adminId = parseAdminId(rawToken) ?: return null
         val expiresAt = redis.opsForZSet().score(key(adminId), hash(rawToken)) ?: return null
-        return adminId.takeIf { expiresAt > nowSeconds() }
+        return adminId.takeIf { expiresAt > nowMillis() }
     }
 
     override fun rotate(rawToken: String): RotatedRefreshToken? {
@@ -65,8 +65,8 @@ class RefreshTokenServiceImpl(
                 listOf(key(adminId)),
                 hash(rawToken),
                 hash(newRawToken),
-                epochSeconds(expiresAt).toString(),
-                nowSeconds().toString(),
+                epochMillis(expiresAt).toString(),
+                nowMillis().toString(),
                 properties.refreshTokenTtl.seconds.toString(),
                 properties.maxRefreshTokens.toString(),
             )
@@ -89,9 +89,10 @@ class RefreshTokenServiceImpl(
 
     private fun expiresAt(): LocalDateTime = LocalDateTime.now(ZoneOffset.UTC).plus(properties.refreshTokenTtl)
 
-    private fun epochSeconds(time: LocalDateTime): Long = time.toEpochSecond(ZoneOffset.UTC)
+    // 같은 초에 여러 기기가 로그인해도 오래된 순서가 갈리도록 점수는 밀리초 단위다
+    private fun epochMillis(time: LocalDateTime): Long = time.toInstant(ZoneOffset.UTC).toEpochMilli()
 
-    private fun nowSeconds(): Long = epochSeconds(LocalDateTime.now(ZoneOffset.UTC))
+    private fun nowMillis(): Long = epochMillis(LocalDateTime.now(ZoneOffset.UTC))
 
     private fun newRawToken(adminId: Long): String {
         val bytes = ByteArray(TOKEN_BYTES).also(random::nextBytes)

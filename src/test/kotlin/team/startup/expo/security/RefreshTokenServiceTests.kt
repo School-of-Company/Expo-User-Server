@@ -99,7 +99,7 @@ class RefreshTokenServiceTests : IntegrationTestSupport() {
 
     @Test
     fun `한 관리자가 가질 수 있는 기기 수를 넘으면 가장 오래된 토큰부터 무효가 된다`() {
-        val tokens = (1..MAX_TOKENS + 2).map { refreshTokenService.issue(115L) }
+        val tokens = (1..MAX_TOKENS + 2).map { issueOneMillisApart(115L) }
 
         redis.opsForZSet().zCard("refresh_tokens:115") shouldBe MAX_TOKENS.toLong()
         tokens.take(2).forEach { refreshTokenService.findAdminId(it.value) shouldBe null }
@@ -108,7 +108,7 @@ class RefreshTokenServiceTests : IntegrationTestSupport() {
 
     @Test
     fun `교체해도 기기 수 한도를 지킨다`() {
-        val tokens = (1..MAX_TOKENS).map { refreshTokenService.issue(116L) }
+        val tokens = (1..MAX_TOKENS).map { issueOneMillisApart(116L) }
 
         val rotated = refreshTokenService.rotate(tokens.last().value)!!
 
@@ -209,6 +209,9 @@ class RefreshTokenServiceTests : IntegrationTestSupport() {
         val ttl = redis.getExpire("refresh_tokens:110")
         (ttl in 1..Duration.ofDays(7).seconds) shouldBe true
     }
+
+    // 오래된 순서는 만료 시각(밀리초)으로 정해지므로, 같은 밀리초에 발급된 토큰끼리는 순서를 가릴 수 없다. 테스트에서는 간격을 둔다
+    private fun issueOneMillisApart(adminId: Long) = refreshTokenService.issue(adminId).also { Thread.sleep(2) }
 
     private companion object {
         // application.yaml의 jwt.max-refresh-tokens 기본값
