@@ -140,6 +140,20 @@ class SignInTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `429 응답에는 남은 잠금 시간이 Retry-After 초 단위로 실린다`() {
+        repeat(MAX_FAILURES) { signIn("accepted", password = "Wrong1234!").andExpect(status().isBadRequest) }
+
+        val retryAfter =
+            signIn("accepted")
+                .andExpect(status().isTooManyRequests)
+                .andReturn()
+                .response
+                .getHeader("Retry-After")!!
+                .toLong()
+        (retryAfter in 1..redis.getExpire(redis.keys("signin_failures:*").single())) shouldBe true
+    }
+
+    @Test
     fun `없는 닉네임도 같은 방식으로 제한되어 제한 여부로 계정 존재를 알 수 없다`() {
         repeat(MAX_FAILURES) { signIn("nobody").andExpect(status().isBadRequest) }
 
@@ -181,6 +195,16 @@ class SignInTests : IntegrationTestSupport() {
         mockMvc
             .perform(post("/auth/signin").contentType(MediaType.APPLICATION_JSON).content("""{"nickname":"accepted"}"""))
             .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `검증에 실패하면 실패한 필드와 사유를 errors에 담는다`() {
+        mockMvc
+            .perform(post("/auth/signin").contentType(MediaType.APPLICATION_JSON).content("""{"nickname":"accepted","password":""}"""))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.message").value("잘못된 요청입니다."))
+            .andExpect(jsonPath("$.errors.password").isNotEmpty)
+            .andExpect(jsonPath("$.errors.nickname").doesNotExist())
     }
 
     private fun refreshTokenOf(result: MvcResult): String =

@@ -1,6 +1,9 @@
 package team.startup.expo.domain.auth.presentation
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.servlet.http.HttpServletRequest
@@ -19,6 +22,7 @@ import team.startup.expo.domain.auth.model.ParticipantSessionLookup
 import team.startup.expo.domain.auth.presentation.dto.request.SendParticipantCodeReqDto
 import team.startup.expo.domain.auth.presentation.dto.request.VerifyParticipantCodeReqDto
 import team.startup.expo.domain.auth.presentation.dto.response.ParticipantSessionResDto
+import team.startup.expo.domain.auth.presentation.dto.response.SessionErrorResDto
 import team.startup.expo.domain.auth.service.FindParticipantSessionService
 import team.startup.expo.domain.auth.service.LogoutParticipantSessionService
 import team.startup.expo.domain.auth.service.SendParticipantCodeService
@@ -70,6 +74,16 @@ class ParticipantAuthController(
         summary = "참가자 세션 확인",
         description = "쿠키의 세션이 이 박람회에 유효하면 200입니다. 쿠키가 없으면 401 SESSION_REQUIRED, 만료되었으면 401 SESSION_EXPIRED입니다.",
     )
+    @ApiResponse(
+        responseCode = "200",
+        description = "유효한 세션",
+        content = [Content(schema = Schema(implementation = ParticipantSessionResDto::class))],
+    )
+    @ApiResponse(
+        responseCode = "401",
+        description = "`code`가 SESSION_REQUIRED(쿠키 없음) 또는 SESSION_EXPIRED(만료)",
+        content = [Content(schema = Schema(implementation = SessionErrorResDto::class))],
+    )
     @SecurityRequirement(name = "participantSession")
     @GetMapping("/session")
     fun session(
@@ -83,6 +97,7 @@ class ParticipantAuthController(
     }
 
     @Operation(summary = "참가자 세션 로그아웃", description = "세션을 폐기하고 쿠키를 지웁니다. 쿠키가 없거나 이미 없는 세션이어도 204입니다.")
+    @ApiResponse(responseCode = "204", description = "로그아웃됨(세션이 없어도 같음)")
     @SecurityRequirement(name = "participantSession")
     @DeleteMapping("/session")
     fun logout(request: HttpServletRequest): ResponseEntity<Void> {
