@@ -58,6 +58,7 @@ matches, attach none — a wrong label is worse than no label, and an undefined 
 - No emojis
 - Max 2500 characters
 - Wrap all proper nouns and technical identifiers in backticks: class names, method names, annotations, file names, field names, config keys, module names, and agent names.
+- Issue links: when the PR fully resolves an issue in this repo, put `Closes #N` on its own line. The `close-linked-issues` workflow closes it when the PR is merged into `develop` (GitHub only does this for the default branch, `main`). Use `Refs #N` when the issue is only partly resolved, so it stays open. Cross-repo references (`owner/repo#N`) are never closed.
 
 ## Step 6 — Write Body & Show Preview
 
