@@ -32,7 +32,13 @@ class AuthController(
     private val reissueTokenService: ReissueTokenService,
     private val logoutService: LogoutService,
 ) {
-    @Operation(summary = "회원가입", description = "가입한 관리자는 승인 대기(PENDING) 상태이며 기존 관리자가 승인해야 로그인할 수 있습니다.")
+    @Operation(
+        summary = "회원가입",
+        description =
+            "가입한 관리자는 승인 대기(PENDING) 상태이며 기존 관리자가 승인해야 로그인할 수 있습니다. 전화번호로 받은 인증번호(`code`)를 " +
+                "함께 보내야 하며, 인증번호가 틀리면 400, 인증 요청 내역이 없거나 만료되면 404, 시도 횟수를 넘으면 429, " +
+                "인증 서비스에 연결할 수 없으면 503입니다.",
+    )
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     fun signUp(

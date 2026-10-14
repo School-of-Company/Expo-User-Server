@@ -16,6 +16,7 @@ import team.startup.expo.domain.user.entity.Authority
 import team.startup.expo.domain.user.entity.Status
 import team.startup.expo.domain.user.repository.AdminRepository
 import team.startup.expo.global.security.BootstrapAdminRunner
+import team.startup.expo.support.FakeNotificationServer
 import team.startup.expo.support.IntegrationTestSupport
 
 @TestPropertySource(properties = ["bootstrap-admin.nickname=first-admin"])
@@ -35,6 +36,8 @@ class BootstrapAdminTests : IntegrationTestSupport() {
     @BeforeEach
     fun setUp() {
         clearAdmins()
+        FakeNotificationServer.reset()
+        FakeNotificationServer.verifyCodeSentTo("01011110001")
     }
 
     @Test
@@ -126,7 +129,7 @@ class BootstrapAdminTests : IntegrationTestSupport() {
         post("/auth")
             .contentType(MediaType.APPLICATION_JSON)
             .content(
-                """{"name":"관리자","nickname":"$nickname","email":"$email","password":"$PASSWORD","phoneNumber":"$phoneNumber"}""",
+                """{"name":"관리자","nickname":"$nickname","email":"$email","password":"$PASSWORD","phoneNumber":"$phoneNumber","code":"${FakeNotificationServer.VALID_CODE}"}""",
             ),
     )
 
