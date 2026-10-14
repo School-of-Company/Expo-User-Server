@@ -266,13 +266,38 @@ class AuthServiceTests :
 
         given("로그아웃할 때") {
             val refreshTokenService = mockk<RefreshTokenService>()
-            every { refreshTokenService.revoke(any()) } just runs
+            val logoutService = LogoutServiceImpl(refreshTokenService)
 
-            `when`("관리자 id로 로그아웃하면") {
-                LogoutServiceImpl(refreshTokenService).execute(3L)
+            fun reset() {
+                clearMocks(refreshTokenService)
+                every { refreshTokenService.revoke(any()) } just runs
+                every { refreshTokenService.revokeToken(any(), any()) } just runs
+            }
 
-                then("그 관리자의 refresh token을 폐기한다") {
+            `when`("refresh token 없이 로그아웃하면") {
+                reset()
+                logoutService.execute(3L, null)
+
+                then("그 관리자의 모든 기기를 로그아웃한다") {
                     verify(exactly = 1) { refreshTokenService.revoke(3L) }
+                    verify(exactly = 0) { refreshTokenService.revokeToken(any(), any()) }
+                }
+            }
+            `when`("빈 refresh token 헤더를 보내면") {
+                reset()
+                logoutService.execute(3L, "Bearer   ")
+
+                then("모든 기기를 로그아웃한다") {
+                    verify(exactly = 1) { refreshTokenService.revoke(3L) }
+                }
+            }
+            `when`("refresh token과 함께 로그아웃하면") {
+                reset()
+                logoutService.execute(3L, "Bearer 3.some-token")
+
+                then("그 기기의 토큰만 폐기하고 다른 기기는 건드리지 않는다") {
+                    verify(exactly = 1) { refreshTokenService.revokeToken(3L, "3.some-token") }
+                    verify(exactly = 0) { refreshTokenService.revoke(any()) }
                 }
             }
         }

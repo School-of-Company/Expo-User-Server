@@ -182,11 +182,11 @@ class SignInTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `다시 로그인하면 이전 refresh token은 무효가 된다`() {
+    fun `다른 기기에서 다시 로그인해도 이전 기기의 refresh token은 유효하다`() {
         val first = refreshTokenOf(signIn("accepted").andReturn())
         val second = refreshTokenOf(signIn("accepted").andReturn())
 
-        refreshTokenService.findAdminId(first) shouldBe null
+        refreshTokenService.findAdminId(first) shouldBe acceptedAdminId
         refreshTokenService.findAdminId(second) shouldBe acceptedAdminId
     }
 
