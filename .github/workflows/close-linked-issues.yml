@@ -1,0 +1,62 @@
+name: Close linked issues
+
+# GitHub는 기본 브랜치(main)로 병합된 PR의 `Closes #N`만 이슈를 자동으로 닫는다. 이 저장소의 작업 PR은 develop으로 병합되므로,
+# develop으로 병합된 PR 본문의 `Closes`/`Fixes`/`Resolves #N`을 읽어 같은 저장소의 이슈를 직접 닫는다.
+on:
+  pull_request:
+    types: [closed]
+    branches: [develop]
+
+permissions:
+  issues: write
+
+jobs:
+  close:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: PR 본문의 이슈 닫기
+        uses: actions/github-script@v7
+        env:
+          # 본문은 스크립트에 끼워 넣지 않고 환경 변수로만 받는다(본문의 내용이 코드로 실행되지 않게 한다)
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          script: |
+            const body = process.env.PR_BODY || '';
+            const prNumber = Number(process.env.PR_NUMBER);
+            // `owner/repo#N`처럼 다른 저장소를 가리키는 값은 키워드 바로 뒤에 `#`이 오지 않아 걸리지 않는다
+            const pattern = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b\s*:?\s+#(\d+)\b/gi;
+            const numbers = [...new Set([...body.matchAll(pattern)].map((match) => Number(match[1])))];
+            if (numbers.length === 0) {
+              core.info('닫을 이슈가 없습니다.');
+              return;
+            }
+
+            for (const issue_number of numbers) {
+              if (issue_number === prNumber) continue;
+              const { data: issue } = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+              });
+              // 번호가 PR이거나 이미 닫혔으면 건드리지 않는다
+              if (issue.pull_request || issue.state === 'closed') {
+                core.info(`#${issue_number}는 이슈가 아니거나 이미 닫혀 있습니다.`);
+                continue;
+              }
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body: `#${prNumber}이 \`develop\`에 병합되어 이슈를 닫습니다. 운영 반영은 \`main\` 릴리스 뒤입니다.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                state: 'closed',
+                state_reason: 'completed',
+              });
+              core.info(`#${issue_number}를 닫았습니다.`);
+            }
