@@ -35,6 +35,11 @@ object FakeNotificationServer {
 
     val url: String get() = "http://127.0.0.1:${server.address.port}"
 
+    /** 인증번호를 보낸 것으로 기록해, 그 번호는 [VALID_CODE]로 검증할 수 있게 한다. */
+    fun verifyCodeSentTo(vararg phoneNumbers: String) {
+        sentTo.addAll(phoneNumbers)
+    }
+
     fun reset() {
         sentTo.clear()
         verifications.clear()

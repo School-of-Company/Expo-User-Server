@@ -29,7 +29,7 @@ class SensitiveLoggingTests : IntegrationTestSupport() {
             listOf(
                 JwtProperties(privateKey = "PRIVATE-KEY-SECRET").toString(),
                 InternalProperties(token = INTERNAL_SECRET).toString(),
-                SignUpReqDto("관리자", "admin1", "a@b.com", "Passw0rd!-SECRET", "01012341234").toString(),
+                SignUpReqDto("관리자", "admin1", "a@b.com", "Passw0rd!-SECRET", "01012341234", "9876").toString(),
                 SignInReqDto("admin1", "Passw0rd!-SECRET").toString(),
                 TokenResDto("ACCESS-TOKEN-SECRET", "REFRESH-TOKEN-SECRET", LocalDateTime.now(), LocalDateTime.now()).toString(),
             ).joinToString("\n")
@@ -44,7 +44,9 @@ class SensitiveLoggingTests : IntegrationTestSupport() {
         mockMvc.perform(
             post("/auth")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"name":"관리자","nickname":"n","email":"a@b.com","password":"weak-LOG-SECRET","phoneNumber":"01012341234"}"""),
+                .content(
+                    """{"name":"관리자","nickname":"n","email":"a@b.com","password":"weak-LOG-SECRET","phoneNumber":"01012341234","code":"1234"}""",
+                ),
         )
         mockMvc.perform(
             post("/auth/signin")

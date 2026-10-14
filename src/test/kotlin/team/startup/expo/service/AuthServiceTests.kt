@@ -27,6 +27,7 @@ import team.startup.expo.domain.auth.service.impl.TokenIssuer
 import team.startup.expo.domain.user.entity.Admin
 import team.startup.expo.domain.user.entity.Status
 import team.startup.expo.domain.user.repository.AdminRepository
+import team.startup.expo.global.client.notification.NotificationAuthSender
 import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.security.jwt.IssuedToken
 import java.time.LocalDateTime
@@ -138,14 +139,18 @@ class AuthServiceTests :
         given("회원가입할 때") {
             val adminRepository = mockk<AdminRepository>()
             val passwordEncoder = mockk<PasswordEncoder>()
-            val service = SignUpServiceImpl(adminRepository, passwordEncoder)
-            val request = SignUpReqDto("홍길동", "hong", "hong@test.com", "plain-password", "01012345678")
+            val notificationAuthSender = mockk<NotificationAuthSender>()
+            val service = SignUpServiceImpl(adminRepository, passwordEncoder, notificationAuthSender)
+            val request = SignUpReqDto("홍길동", "hong", "hong@test.com", "plain-password", "01012345678", "1234")
 
             fun nothingTaken() {
                 every { adminRepository.existsByPhoneNumber(any()) } returns false
                 every { adminRepository.existsByEmail(any()) } returns false
                 every { adminRepository.existsByNickname(any()) } returns false
                 every { passwordEncoder.encode("plain-password") } returns "encoded-password"
+                every { notificationAuthSender.verifyCode(any(), any()) } just runs
+                clearMocks(adminRepository, answers = false, recordedCalls = true)
+                clearMocks(notificationAuthSender, answers = false, recordedCalls = true)
             }
 
             `when`("전화번호가 이미 있으면") {
@@ -158,6 +163,7 @@ class AuthServiceTests :
                     error.status shouldBe HttpStatus.CONFLICT
                     error.message shouldBe "이미 존재하는 전화번호입니다."
                     verify(exactly = 0) { adminRepository.saveAndFlush(any<Admin>()) }
+                    verify(exactly = 0) { notificationAuthSender.verifyCode(any(), any()) }
                 }
             }
             `when`("이메일이 이미 있으면") {
@@ -174,6 +180,18 @@ class AuthServiceTests :
 
                 then("닉네임 중복으로 409이다") {
                     shouldThrow<ExpectedException> { service.execute(request) }.message shouldBe "이미 존재하는 닉네임입니다."
+                }
+            }
+            `when`("인증번호가 맞지 않으면") {
+                nothingTaken()
+                every { notificationAuthSender.verifyCode("01012345678", "1234") } throws
+                    ExpectedException(HttpStatus.BAD_REQUEST, "인증번호가 일치하지 않습니다.")
+
+                then("그 오류를 그대로 전하고 저장하지 않는다") {
+                    val error = shouldThrow<ExpectedException> { service.execute(request) }
+
+                    error.status shouldBe HttpStatus.BAD_REQUEST
+                    verify(exactly = 0) { adminRepository.saveAndFlush(any<Admin>()) }
                 }
             }
             `when`("확인과 저장 사이에 같은 값이 들어와 UNIQUE 제약에 걸리면") {
@@ -194,7 +212,8 @@ class AuthServiceTests :
 
                 service.execute(request)
 
-                then("암호화한 비밀번호로 승인 대기 일반 관리자를 저장한다") {
+                then("인증번호를 확인한 뒤 암호화한 비밀번호로 승인 대기 일반 관리자를 저장한다") {
+                    verify(exactly = 1) { notificationAuthSender.verifyCode("01012345678", "1234") }
                     saved.captured.password shouldBe "encoded-password"
                     saved.captured.status shouldBe Status.PENDING
                     saved.captured.nickname shouldBe "hong"
@@ -247,13 +266,38 @@ class AuthServiceTests :
 
         given("로그아웃할 때") {
             val refreshTokenService = mockk<RefreshTokenService>()
-            every { refreshTokenService.revoke(any()) } just runs
+            val logoutService = LogoutServiceImpl(refreshTokenService)
 
-            `when`("관리자 id로 로그아웃하면") {
-                LogoutServiceImpl(refreshTokenService).execute(3L)
+            fun reset() {
+                clearMocks(refreshTokenService)
+                every { refreshTokenService.revoke(any()) } just runs
+                every { refreshTokenService.revokeToken(any(), any()) } just runs
+            }
 
-                then("그 관리자의 refresh token을 폐기한다") {
+            `when`("refresh token 없이 로그아웃하면") {
+                reset()
+                logoutService.execute(3L, null)
+
+                then("그 관리자의 모든 기기를 로그아웃한다") {
                     verify(exactly = 1) { refreshTokenService.revoke(3L) }
+                    verify(exactly = 0) { refreshTokenService.revokeToken(any(), any()) }
+                }
+            }
+            `when`("빈 refresh token 헤더를 보내면") {
+                reset()
+                logoutService.execute(3L, "Bearer   ")
+
+                then("모든 기기를 로그아웃한다") {
+                    verify(exactly = 1) { refreshTokenService.revoke(3L) }
+                }
+            }
+            `when`("refresh token과 함께 로그아웃하면") {
+                reset()
+                logoutService.execute(3L, "Bearer 3.some-token")
+
+                then("그 기기의 토큰만 폐기하고 다른 기기는 건드리지 않는다") {
+                    verify(exactly = 1) { refreshTokenService.revokeToken(3L, "3.some-token") }
+                    verify(exactly = 0) { refreshTokenService.revoke(any()) }
                 }
             }
         }

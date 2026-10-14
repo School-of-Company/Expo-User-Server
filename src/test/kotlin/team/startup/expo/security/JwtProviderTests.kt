@@ -82,6 +82,11 @@ class JwtProviderTests {
     }
 
     @Test
+    fun `refresh token 최대 개수는 1 이상이어야 한다`() {
+        assertThrows(IllegalArgumentException::class.java) { JwtProperties(privateKey = pem(keyPair), maxRefreshTokens = 0) }
+    }
+
+    @Test
     fun `refresh token 수명은 0 이하이면 거부한다`() {
         assertThrows(IllegalArgumentException::class.java) { JwtProperties(privateKey = pem(keyPair), refreshTokenTtl = Duration.ZERO) }
     }

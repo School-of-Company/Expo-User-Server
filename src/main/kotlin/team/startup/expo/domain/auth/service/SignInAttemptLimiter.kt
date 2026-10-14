@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component
 import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.security.SignInProperties
 import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
 
 /**
  * 닉네임별 로그인 실패 횟수를 Redis에 세어 무차별 대입을 막는다. 첫 실패에 제한 시간(TTL)을 걸고 그 뒤 실패는 시간을 늘리지
@@ -24,7 +25,9 @@ class SignInAttemptLimiter(
     fun requireNotLocked(nickname: String) {
         val failures = redis.opsForValue().get(key(nickname))?.toIntOrNull() ?: 0
         if (failures >= properties.maxFailures) {
-            throw ExpectedException(HttpStatus.TOO_MANY_REQUESTS, "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.")
+            // TTL이 없는 키(-1)나 방금 만료된 키(-2)여도 헤더가 0 이하가 되지 않게 최소 1초로 맞춘다
+            val remaining = (redis.getExpire(key(nickname), TimeUnit.SECONDS)).coerceAtLeast(1L)
+            throw ExpectedException(HttpStatus.TOO_MANY_REQUESTS, "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.", remaining)
         }
     }
 

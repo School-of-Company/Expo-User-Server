@@ -8,30 +8,22 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.TestConfiguration
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
-import org.testcontainers.kafka.KafkaContainer
 import team.startup.expo.domain.participation.service.RegistrationOutboxPublisher
 import team.startup.expo.support.IntegrationTestSupport
+import team.startup.expo.support.SharedKafka
 import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
 import java.util.UUID
 
-@Import(RegistrationOutboxRelayTests.KafkaContainerConfig::class)
 class RegistrationOutboxRelayTests : IntegrationTestSupport() {
     @Autowired
     private lateinit var mockMvc: MockMvc
-
-    @Autowired
-    private lateinit var kafka: KafkaContainer
 
     @Autowired
     private lateinit var jsonMapper: JsonMapper
@@ -158,20 +150,13 @@ class RegistrationOutboxRelayTests : IntegrationTestSupport() {
     private fun consumerOf(topic: String): KafkaConsumer<String, String> =
         KafkaConsumer<String, String>(
             mapOf(
-                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to kafka.bootstrapServers,
+                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to SharedKafka.bootstrapServers,
                 ConsumerConfig.GROUP_ID_CONFIG to "test-${UUID.randomUUID()}",
                 ConsumerConfig.AUTO_OFFSET_RESET_CONFIG to "earliest",
                 ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
                 ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
             ),
         ).apply { subscribe(listOf(topic)) }
-
-    @TestConfiguration(proxyBeanMethods = false)
-    class KafkaContainerConfig {
-        @Bean
-        @ServiceConnection
-        fun kafka(): KafkaContainer = KafkaContainer("apache/kafka:3.9.1")
-    }
 
     companion object {
         private const val EXPO = "0199aaaa-0000-7000-8000-0000000000d1"
@@ -183,6 +168,7 @@ class RegistrationOutboxRelayTests : IntegrationTestSupport() {
         @JvmStatic
         @DynamicPropertySource
         fun enableRelay(registry: DynamicPropertyRegistry) {
+            registry.add("spring.kafka.bootstrap-servers") { SharedKafka.bootstrapServers }
             registry.add("registration-events.relay.enabled") { "true" }
             registry.add("registration-events.relay.interval-ms") { "300" }
         }

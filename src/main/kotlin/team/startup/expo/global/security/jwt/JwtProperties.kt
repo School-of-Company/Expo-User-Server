@@ -9,24 +9,30 @@ import java.time.Duration
  * access token 수명은 [MAX_ACCESS_TOKEN_TTL]을 넘을 수 없다. `Expo` 서비스가 수명이 15분을 넘는 토큰을
  * 거절하므로, 설정 실수로 더 긴 토큰을 발급하면 로그인 직후의 정상 토큰도 `401`이 된다. 넘는 값은 기동 시
  * 거부해서 이 서비스가 그런 토큰을 발급하지 못하게 한다.
+ *
+ * [maxRefreshTokens]는 한 관리자가 동시에 가질 수 있는 refresh token(로그인한 기기) 수다. 넘으면 가장 오래된 것부터 무효가 된다.
  */
 @ConfigurationProperties(prefix = "jwt")
 data class JwtProperties(
     val privateKey: String,
     val accessTokenTtl: Duration = MAX_ACCESS_TOKEN_TTL,
     val refreshTokenTtl: Duration = Duration.ofDays(7),
+    val maxRefreshTokens: Int = DEFAULT_MAX_REFRESH_TOKENS,
 ) {
     // data class의 기본 toString은 개인키를 그대로 출력한다
-    override fun toString() = "JwtProperties(privateKey=***, accessTokenTtl=$accessTokenTtl, refreshTokenTtl=$refreshTokenTtl)"
+    override fun toString() =
+        "JwtProperties(privateKey=***, accessTokenTtl=$accessTokenTtl, refreshTokenTtl=$refreshTokenTtl, maxRefreshTokens=$maxRefreshTokens)"
 
     init {
         require(accessTokenTtl.isPositive && accessTokenTtl <= MAX_ACCESS_TOKEN_TTL) {
             "jwt.access-token-ttl must be positive and at most $MAX_ACCESS_TOKEN_TTL"
         }
         require(refreshTokenTtl.isPositive) { "jwt.refresh-token-ttl must be positive" }
+        require(maxRefreshTokens > 0) { "jwt.max-refresh-tokens must be positive" }
     }
 
     companion object {
         val MAX_ACCESS_TOKEN_TTL: Duration = Duration.ofMinutes(15)
+        const val DEFAULT_MAX_REFRESH_TOKENS = 10
     }
 }
