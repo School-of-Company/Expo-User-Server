@@ -27,6 +27,7 @@ import team.startup.expo.domain.auth.service.impl.TokenIssuer
 import team.startup.expo.domain.user.entity.Admin
 import team.startup.expo.domain.user.entity.Status
 import team.startup.expo.domain.user.repository.AdminRepository
+import team.startup.expo.global.client.notification.NotificationAuthSender
 import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.security.jwt.IssuedToken
 import java.time.LocalDateTime
@@ -138,14 +139,18 @@ class AuthServiceTests :
         given("회원가입할 때") {
             val adminRepository = mockk<AdminRepository>()
             val passwordEncoder = mockk<PasswordEncoder>()
-            val service = SignUpServiceImpl(adminRepository, passwordEncoder)
-            val request = SignUpReqDto("홍길동", "hong", "hong@test.com", "plain-password", "01012345678")
+            val notificationAuthSender = mockk<NotificationAuthSender>()
+            val service = SignUpServiceImpl(adminRepository, passwordEncoder, notificationAuthSender)
+            val request = SignUpReqDto("홍길동", "hong", "hong@test.com", "plain-password", "01012345678", "1234")
 
             fun nothingTaken() {
                 every { adminRepository.existsByPhoneNumber(any()) } returns false
                 every { adminRepository.existsByEmail(any()) } returns false
                 every { adminRepository.existsByNickname(any()) } returns false
                 every { passwordEncoder.encode("plain-password") } returns "encoded-password"
+                every { notificationAuthSender.verifyCode(any(), any()) } just runs
+                clearMocks(adminRepository, answers = false, recordedCalls = true)
+                clearMocks(notificationAuthSender, answers = false, recordedCalls = true)
             }
 
             `when`("전화번호가 이미 있으면") {
@@ -158,6 +163,7 @@ class AuthServiceTests :
                     error.status shouldBe HttpStatus.CONFLICT
                     error.message shouldBe "이미 존재하는 전화번호입니다."
                     verify(exactly = 0) { adminRepository.saveAndFlush(any<Admin>()) }
+                    verify(exactly = 0) { notificationAuthSender.verifyCode(any(), any()) }
                 }
             }
             `when`("이메일이 이미 있으면") {
@@ -174,6 +180,18 @@ class AuthServiceTests :
 
                 then("닉네임 중복으로 409이다") {
                     shouldThrow<ExpectedException> { service.execute(request) }.message shouldBe "이미 존재하는 닉네임입니다."
+                }
+            }
+            `when`("인증번호가 맞지 않으면") {
+                nothingTaken()
+                every { notificationAuthSender.verifyCode("01012345678", "1234") } throws
+                    ExpectedException(HttpStatus.BAD_REQUEST, "인증번호가 일치하지 않습니다.")
+
+                then("그 오류를 그대로 전하고 저장하지 않는다") {
+                    val error = shouldThrow<ExpectedException> { service.execute(request) }
+
+                    error.status shouldBe HttpStatus.BAD_REQUEST
+                    verify(exactly = 0) { adminRepository.saveAndFlush(any<Admin>()) }
                 }
             }
             `when`("확인과 저장 사이에 같은 값이 들어와 UNIQUE 제약에 걸리면") {
@@ -194,7 +212,8 @@ class AuthServiceTests :
 
                 service.execute(request)
 
-                then("암호화한 비밀번호로 승인 대기 일반 관리자를 저장한다") {
+                then("인증번호를 확인한 뒤 암호화한 비밀번호로 승인 대기 일반 관리자를 저장한다") {
+                    verify(exactly = 1) { notificationAuthSender.verifyCode("01012345678", "1234") }
                     saved.captured.password shouldBe "encoded-password"
                     saved.captured.status shouldBe Status.PENDING
                     saved.captured.nickname shouldBe "hong"

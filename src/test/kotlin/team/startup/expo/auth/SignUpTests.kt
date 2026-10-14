@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import team.startup.expo.domain.user.entity.Authority
 import team.startup.expo.domain.user.entity.Status
 import team.startup.expo.domain.user.repository.AdminRepository
+import team.startup.expo.support.FakeNotificationServer
 import team.startup.expo.support.IntegrationTestSupport
 
 class SignUpTests : IntegrationTestSupport() {
@@ -28,6 +29,8 @@ class SignUpTests : IntegrationTestSupport() {
     @BeforeEach
     fun setUp() {
         clearAdmins()
+        FakeNotificationServer.reset()
+        FakeNotificationServer.verifyCodeSentTo("01012341234", "01099999999")
     }
 
     @Test
@@ -98,17 +101,54 @@ class SignUpTests : IntegrationTestSupport() {
         adminRepository.count() shouldBe 0L
     }
 
+    @Test
+    fun `인증번호가 틀리면 400이고 가입되지 않는다`() {
+        signUp(code = "0000").andExpect(status().isBadRequest)
+
+        adminRepository.count() shouldBe 0L
+    }
+
+    @Test
+    fun `인증 요청 내역이 없는 번호는 404이고 가입되지 않는다`() {
+        signUp(phoneNumber = "01055556666").andExpect(status().isNotFound)
+
+        adminRepository.count() shouldBe 0L
+    }
+
+    @Test
+    fun `인증번호를 보내지 않으면 400이고 Notification을 부르지 않는다`() {
+        mockMvc
+            .perform(
+                post("/auth").contentType(MediaType.APPLICATION_JSON).content(
+                    """{"name":"관리자","nickname":"admin1","email":"admin1@gsm.hs.kr","password":"$PASSWORD","phoneNumber":"01012341234"}""",
+                ),
+            ).andExpect(status().isBadRequest)
+
+        FakeNotificationServer.verifiedRequests shouldBe emptyList()
+        adminRepository.count() shouldBe 0L
+    }
+
+    @Test
+    fun `인증 서비스를 쓸 수 없으면 503이고 가입되지 않는다`() {
+        FakeNotificationServer.verifyStatus = 500
+
+        signUp().andExpect(status().isServiceUnavailable)
+
+        adminRepository.count() shouldBe 0L
+    }
+
     private fun signUp(
         name: String = "관리자",
         nickname: String = "admin1",
         email: String = "admin1@gsm.hs.kr",
         password: String = PASSWORD,
         phoneNumber: String = "01012341234",
+        code: String = FakeNotificationServer.VALID_CODE,
     ) = mockMvc.perform(
         post("/auth")
             .contentType(MediaType.APPLICATION_JSON)
             .content(
-                """{"name":"$name","nickname":"$nickname","email":"$email","password":"$password","phoneNumber":"$phoneNumber"}""",
+                """{"name":"$name","nickname":"$nickname","email":"$email","password":"$password","phoneNumber":"$phoneNumber","code":"$code"}""",
             ),
     )
 
