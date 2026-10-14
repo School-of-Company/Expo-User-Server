@@ -1,6 +1,9 @@
 package team.startup.expo.domain.auth.presentation
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.headers.Header
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.security.SecurityRequirement
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
@@ -45,7 +48,13 @@ class AuthController(
         summary = "로그인",
         description =
             "없는 닉네임과 틀린 비밀번호는 구분 없이 같은 400이고, 승인 전 관리자는 비밀번호가 맞을 때만 403입니다. 같은 닉네임으로 " +
-                "짧은 시간에 여러 번 실패하면 비밀번호가 맞아도 429로 잠시 막습니다.",
+                "짧은 시간에 여러 번 실패하면 비밀번호가 맞아도 429로 잠시 막으며, 응답의 `Retry-After` 헤더에 남은 시간(초)이 있습니다. " +
+                "관리자당 refresh token이 하나라 다른 기기에서 로그인하면 먼저 로그인한 기기는 access token이 만료될 때 로그아웃됩니다(단일 기기 로그인).",
+    )
+    @ApiResponse(
+        responseCode = "429",
+        description = "로그인 시도가 너무 많음",
+        headers = [Header(name = "Retry-After", description = "다시 시도할 수 있기까지 남은 시간(초)", schema = Schema(type = "integer"))],
     )
     @PostMapping("/signin")
     fun signIn(
