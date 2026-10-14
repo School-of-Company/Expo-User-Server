@@ -18,6 +18,40 @@ class LogoutTests : AuthFlowTestSupport() {
     }
 
     @Test
+    fun `RefreshToken 헤더를 보내면 그 기기만 로그아웃하고 다른 기기는 유지된다`() {
+        val phone = signInAsAccepted()
+        val tablet = signInAsAccepted()
+
+        mockMvc
+            .perform(
+                delete("/auth")
+                    .header("Authorization", bearerOf(acceptedAdminId))
+                    .header("RefreshToken", "Bearer ${phone.refreshToken}"),
+            ).andExpect(status().isNoContent)
+
+        mockMvc
+            .perform(patch("/auth").header("RefreshToken", "Bearer ${phone.refreshToken}"))
+            .andExpect(status().isUnauthorized)
+        mockMvc
+            .perform(patch("/auth").header("RefreshToken", "Bearer ${tablet.refreshToken}"))
+            .andExpect(status().isOk)
+    }
+
+    @Test
+    fun `RefreshToken 헤더 없이 로그아웃하면 모든 기기가 로그아웃된다`() {
+        val phone = signInAsAccepted()
+        val tablet = signInAsAccepted()
+
+        mockMvc.perform(delete("/auth").header("Authorization", bearerOf(acceptedAdminId))).andExpect(status().isNoContent)
+
+        for (tokens in listOf(phone, tablet)) {
+            mockMvc
+                .perform(patch("/auth").header("RefreshToken", "Bearer ${tokens.refreshToken}"))
+                .andExpect(status().isUnauthorized)
+        }
+    }
+
+    @Test
     fun `이미 로그아웃했거나 로그인한 적 없어도 204이다`() {
         mockMvc.perform(delete("/auth").header("Authorization", bearerOf(acceptedAdminId))).andExpect(status().isNoContent)
         mockMvc.perform(delete("/auth").header("Authorization", bearerOf(acceptedAdminId))).andExpect(status().isNoContent)
