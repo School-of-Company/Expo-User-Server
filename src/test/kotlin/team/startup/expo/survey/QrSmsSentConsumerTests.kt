@@ -8,30 +8,22 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.TestConfiguration
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Import
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.kafka.KafkaContainer
 import team.startup.expo.domain.participation.entity.StandardParticipant
 import team.startup.expo.domain.participation.repository.StandardParticipantRepository
 import team.startup.expo.domain.training.entity.ApplicationType
 import team.startup.expo.support.IntegrationTestSupport
+import team.startup.expo.support.SharedKafka
 import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
 import java.time.LocalDateTime
 import java.util.UUID
 
-@Import(QrSmsSentConsumerTests.KafkaContainerConfig::class)
 class QrSmsSentConsumerTests : IntegrationTestSupport() {
     @Autowired
     private lateinit var kafkaTemplate: KafkaTemplate<String, String>
-
-    @Autowired
-    private lateinit var kafka: KafkaContainer
 
     @Autowired
     private lateinit var standardParticipantRepository: StandardParticipantRepository
@@ -87,7 +79,8 @@ class QrSmsSentConsumerTests : IntegrationTestSupport() {
         kafkaTemplate.send(QR_TOPIC, "broken", "not-json").get()
 
         awaitRecord(qrDeadLetterConsumer) { it == "not-json" } shouldBe "not-json"
-        surveyDeadLetterConsumer.poll(Duration.ofSeconds(3)).count() shouldBe 0
+        // 브로커를 다른 테스트 클래스와 나눠 쓰므로 토픽이 비었는지가 아니라 이 메시지가 없는지를 본다
+        surveyDeadLetterConsumer.poll(Duration.ofSeconds(3)).none { it.value() == "not-json" } shouldBe true
         count("tb_sms_try_event") shouldBe 0L
     }
 
@@ -157,7 +150,7 @@ class QrSmsSentConsumerTests : IntegrationTestSupport() {
     private fun consumerOf(topic: String): KafkaConsumer<String, String> =
         KafkaConsumer<String, String>(
             mapOf(
-                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to kafka.bootstrapServers,
+                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to SharedKafka.bootstrapServers,
                 ConsumerConfig.GROUP_ID_CONFIG to "test-${UUID.randomUUID()}",
                 ConsumerConfig.AUTO_OFFSET_RESET_CONFIG to "earliest",
                 ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
@@ -172,13 +165,6 @@ class QrSmsSentConsumerTests : IntegrationTestSupport() {
 
     private fun newEventId() = UUID.randomUUID().toString()
 
-    @TestConfiguration(proxyBeanMethods = false)
-    class KafkaContainerConfig {
-        @Bean
-        @ServiceConnection
-        fun kafka(): KafkaContainer = KafkaContainer("apache/kafka:3.9.1")
-    }
-
     companion object {
         private const val EXPO = "0199aaaa-0000-7000-8000-0000000000f1"
         private const val QR_TOPIC = "notification.qr-sms.sent"
@@ -190,6 +176,7 @@ class QrSmsSentConsumerTests : IntegrationTestSupport() {
         @JvmStatic
         @DynamicPropertySource
         fun enableConsumer(registry: DynamicPropertyRegistry) {
+            registry.add("spring.kafka.bootstrap-servers") { SharedKafka.bootstrapServers }
             registry.add("qr-sms-sent.consumer.auto-startup") { "true" }
         }
     }

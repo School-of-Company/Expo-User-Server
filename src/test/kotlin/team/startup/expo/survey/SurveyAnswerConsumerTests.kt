@@ -8,20 +8,16 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.TestConfiguration
-import org.springframework.boot.testcontainers.service.connection.ServiceConnection
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Import
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.kafka.KafkaContainer
 import team.startup.expo.domain.participation.service.ExpoDeletionLock
 import team.startup.expo.domain.training.entity.ApplicationType
 import team.startup.expo.domain.training.entity.Trainee
 import team.startup.expo.domain.training.repository.TraineeRepository
 import team.startup.expo.support.IntegrationTestSupport
+import team.startup.expo.support.SharedKafka
 import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
 import java.time.LocalDateTime
@@ -30,13 +26,9 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-@Import(SurveyAnswerConsumerTests.KafkaContainerConfig::class)
 class SurveyAnswerConsumerTests : IntegrationTestSupport() {
     @Autowired
     private lateinit var kafkaTemplate: KafkaTemplate<String, String>
-
-    @Autowired
-    private lateinit var kafka: KafkaContainer
 
     @Autowired
     private lateinit var traineeRepository: TraineeRepository
@@ -328,7 +320,7 @@ class SurveyAnswerConsumerTests : IntegrationTestSupport() {
     private fun consumerOf(topic: String): KafkaConsumer<String, String> =
         KafkaConsumer<String, String>(
             mapOf(
-                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to kafka.bootstrapServers,
+                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to SharedKafka.bootstrapServers,
                 ConsumerConfig.GROUP_ID_CONFIG to "test-${UUID.randomUUID()}",
                 ConsumerConfig.AUTO_OFFSET_RESET_CONFIG to "earliest",
                 ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
@@ -347,13 +339,6 @@ class SurveyAnswerConsumerTests : IntegrationTestSupport() {
 
     private fun newEventId() = UUID.randomUUID().toString()
 
-    @TestConfiguration(proxyBeanMethods = false)
-    class KafkaContainerConfig {
-        @Bean
-        @ServiceConnection
-        fun kafka(): KafkaContainer = KafkaContainer("apache/kafka:3.9.1")
-    }
-
     companion object {
         private const val EXPO_ID = "0199aaaa-0000-7000-8000-000000000001"
         private const val OTHER_EXPO_ID = "0199aaaa-0000-7000-8000-000000000002"
@@ -369,6 +354,7 @@ class SurveyAnswerConsumerTests : IntegrationTestSupport() {
         @JvmStatic
         @DynamicPropertySource
         fun enableConsumer(registry: DynamicPropertyRegistry) {
+            registry.add("spring.kafka.bootstrap-servers") { SharedKafka.bootstrapServers }
             registry.add("survey-answer.consumer.auto-startup") { "true" }
         }
     }
