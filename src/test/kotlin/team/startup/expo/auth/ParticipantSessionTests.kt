@@ -39,6 +39,8 @@ class ParticipantSessionTests : IntegrationTestSupport() {
 
     private val executor = Executors.newFixedThreadPool(THREADS)
 
+    private fun verifiedCount() = jdbcTemplate.queryForObject("SELECT count(*) FROM tb_participant_phone_verification", Long::class.java)
+
     @BeforeEach
     fun setUp() {
         FakeExpoServer.reset()
@@ -205,6 +207,25 @@ class ParticipantSessionTests : IntegrationTestSupport() {
         checkNotNull(second)
         (first.sessionId == second.sessionId) shouldBe false
         redis.keys("participant_session:*").size shouldBe 2
+    }
+
+    @Test
+    fun `인증에 성공한 번호만 박람회별로 한 번 해시로 기록하고 번호 원문은 저장하지 않는다`() {
+        jdbcTemplate.execute("DELETE FROM tb_participant_phone_verification")
+        sendCode(EXPO, PHONE).andExpect(status().isOk)
+
+        // 틀린 인증번호는 기록하지 않는다
+        verify(EXPO, PHONE, "0000").andExpect(status().isBadRequest)
+        verifiedCount() shouldBe 0L
+
+        verify(EXPO, PHONE, FakeNotificationServer.VALID_CODE).andExpect(status().isOk)
+        // 이미 쓴 인증번호로 되풀이해도 건수는 늘지 않는다
+        verify(EXPO, PHONE, FakeNotificationServer.VALID_CODE).andExpect(status().isConflict)
+
+        verifiedCount() shouldBe 1L
+        val hash = jdbcTemplate.queryForObject("SELECT phone_hash FROM tb_participant_phone_verification", String::class.java)!!
+        hash.length shouldBe 64
+        hash shouldNotContain PHONE
     }
 
     @Test
