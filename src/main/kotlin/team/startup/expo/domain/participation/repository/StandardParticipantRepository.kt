@@ -80,6 +80,9 @@ interface StandardParticipantRepository : JpaRepository<StandardParticipant, Lon
         @Param("limit") limit: Int,
     ): List<StandardParticipant>
 
+    /** 그 박람회의 일반 참가자 수. 동행자도 각각 한 명으로 센다. */
+    fun countByExpoId(expoId: String): Long
+
     fun findBriefsByExpoIdAndIdIn(
         expoId: String,
         ids: Collection<Long>,

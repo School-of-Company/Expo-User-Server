@@ -53,7 +53,8 @@ class ExpoDataPurgeApiTests : IntegrationTestSupport() {
     @BeforeEach
     fun setUp() {
         jdbcTemplate.execute(
-            "TRUNCATE TABLE tb_expo_deletion, tb_survey_answer_event, tb_trainee, tb_standard_participant, tb_admin RESTART IDENTITY CASCADE",
+            "TRUNCATE TABLE tb_expo_deletion, tb_survey_answer_event, tb_participant_phone_verification, " +
+                "tb_trainee, tb_standard_participant, tb_admin RESTART IDENTITY CASCADE",
         )
         // 삭제 기록은 영구히 남으므로 테스트마다 새 박람회 id를 쓴다
         expoA = UUID.randomUUID().toString()
@@ -92,6 +93,22 @@ class ExpoDataPurgeApiTests : IntegrationTestSupport() {
         ) shouldBe
             1L
         jdbcTemplate.queryForObject("SELECT count(*) FROM tb_expo_deletion WHERE expo_id = ?", Long::class.java, expoB) shouldBe 0L
+    }
+
+    @Test
+    fun `전화 인증 집계 기록도 그 박람회 것만 지운다`() {
+        listOf(expoA, expoB).forEach {
+            jdbcTemplate.update(
+                "INSERT INTO tb_participant_phone_verification (expo_id, phone_hash, first_verified_at) VALUES (?, ?, now())",
+                it,
+                "a".repeat(64),
+            )
+        }
+
+        purge(expoA).andExpect(status().isNoContent)
+
+        count("tb_participant_phone_verification", expoA) shouldBe 0
+        count("tb_participant_phone_verification", expoB) shouldBe 1
     }
 
     @Test
