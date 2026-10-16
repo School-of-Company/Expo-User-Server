@@ -15,12 +15,15 @@ import team.startup.expo.domain.training.presentation.dto.request.GetTraineeName
 import team.startup.expo.domain.training.presentation.dto.request.ResolveOrCreateTraineeByParticipantReqDto
 import team.startup.expo.domain.training.presentation.dto.request.ResolveOrCreateTraineeReqDto
 import team.startup.expo.domain.training.presentation.dto.request.ResolveTraineeReqDto
+import team.startup.expo.domain.training.presentation.dto.request.TraineeParticipantLinkReqDto
 import team.startup.expo.domain.training.presentation.dto.response.CreateTraineeResDto
 import team.startup.expo.domain.training.presentation.dto.response.ResolveOrCreateTraineeByParticipantResDto
 import team.startup.expo.domain.training.presentation.dto.response.ResolveOrCreateTraineeResDto
 import team.startup.expo.domain.training.presentation.dto.response.ResolveTraineeResDto
 import team.startup.expo.domain.training.presentation.dto.response.TraineeNameResDto
+import team.startup.expo.domain.training.presentation.dto.response.TraineeParticipantLinkResDto
 import team.startup.expo.domain.training.service.GetTraineeNamesService
+import team.startup.expo.domain.training.service.LinkTraineeParticipantService
 import team.startup.expo.domain.training.service.RegisterTraineeService
 import team.startup.expo.domain.training.service.ResolveOrCreateTraineeByParticipantService
 import team.startup.expo.domain.training.service.ResolveOrCreateTraineeService
@@ -40,6 +43,7 @@ class InternalTraineeController(
     private val registerTraineeService: RegisterTraineeService,
     private val resolveOrCreateTraineeService: ResolveOrCreateTraineeService,
     private val resolveOrCreateTraineeByParticipantService: ResolveOrCreateTraineeByParticipantService,
+    private val linkTraineeParticipantService: LinkTraineeParticipantService,
 ) {
     @Operation(summary = "연수자 id 조회", description = "박람회 id와 연수 번호로 연수자 id를 찾습니다. 없으면 404, 같은 번호의 연수자가 여럿이면 409입니다.")
     @PostMapping("/resolve")
@@ -82,4 +86,29 @@ class InternalTraineeController(
     fun resolveOrCreateTraineeByParticipant(
         @Valid @RequestBody reqDto: ResolveOrCreateTraineeByParticipantReqDto,
     ): ResolveOrCreateTraineeByParticipantResDto = resolveOrCreateTraineeByParticipantService.execute(reqDto)
+
+    @Operation(
+        summary = "레거시 연수자를 확인된 참가자에 연결",
+        description =
+            "운영자가 같은 사람으로 확인한 같은 박람회의 연수자와 참가자를 잇고 승인자와 근거를 감사 기록에 남깁니다. 이름이나 번호로 찾지 않고 " +
+                "연수자·참가자를 만들거나 ID를 바꾸지 않으며 기존 신청·출석은 그대로입니다. 이미 그 연결이면 바꾸지 않고 changed=false입니다. " +
+                "연수자가 다른 참가자에, 또는 참가자가 다른 연수자에 이미 이어져 있으면 409, actorAdminId가 관리자가 아니면 403, " +
+                "없거나 다른 박람회의 연수자·참가자는 구분 없이 404, 삭제 중인 박람회면 409입니다.",
+    )
+    @PostMapping("/participant-link")
+    fun linkTraineeParticipant(
+        @Valid @RequestBody reqDto: TraineeParticipantLinkReqDto,
+    ): TraineeParticipantLinkResDto = linkTraineeParticipantService.link(reqDto)
+
+    @Operation(
+        summary = "잘못 확인한 연수자·참가자 연결 해제",
+        description =
+            "이 연결 API로 이은 연결만 풀고 승인자와 근거를 감사 기록에 남깁니다. 기존 신청·출석은 옮기거나 지우지 않습니다. 이미 연결이 없으면 " +
+                "changed=false입니다. 연수자가 다른 참가자에 이어져 있거나 참가자에서 만든 연수자의 연결이면 409, actorAdminId가 관리자가 아니면 403, " +
+                "없거나 다른 박람회의 연수자는 404입니다. 다른 참가자로 바로잡을 때는 해제한 뒤 다시 연결합니다.",
+    )
+    @PostMapping("/participant-link/revoke")
+    fun revokeTraineeParticipant(
+        @Valid @RequestBody reqDto: TraineeParticipantLinkReqDto,
+    ): TraineeParticipantLinkResDto = linkTraineeParticipantService.revoke(reqDto)
 }
