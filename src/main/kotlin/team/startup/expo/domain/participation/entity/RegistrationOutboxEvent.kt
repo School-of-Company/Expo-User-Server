@@ -10,7 +10,10 @@ import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.time.LocalDateTime
 
-/** 발행할 등록 이벤트. 참가자 저장과 같은 트랜잭션에서 만들고, 릴레이가 발행한 뒤 [publishedAt]을 채운다. */
+/**
+ * 발행할 등록 이벤트. 참가자 저장과 같은 트랜잭션에서 만들고, 릴레이가 발행한 뒤 [publishedAt]을 채운다.
+ * 계속 실패하면 [quarantinedAt]을 채워 격리하고, [quarantinedAt]을 비우면 같은 [eventId]로 다시 발행한다.
+ */
 @Entity
 @Table(name = "tb_registration_outbox")
 class RegistrationOutboxEvent(
@@ -42,4 +45,8 @@ class RegistrationOutboxEvent(
     var publishedAt: LocalDateTime? = null,
     @field:Column(nullable = false)
     var attempts: Int = 0,
+    @field:Column(name = "quarantined_at")
+    var quarantinedAt: LocalDateTime? = null,
+    @field:Column(name = "last_error")
+    var lastError: String? = null,
 )
