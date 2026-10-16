@@ -1,23 +1,34 @@
 package team.startup.expo.domain.participation.service
 
 import org.slf4j.LoggerFactory
+import org.springframework.core.NestedExceptionUtils
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
+import team.startup.expo.domain.participation.entity.ParticipationType
 import team.startup.expo.domain.participation.entity.RegistrationEventType
 import team.startup.expo.domain.participation.entity.RegistrationOutboxEvent
 import team.startup.expo.domain.participation.presentation.dto.response.RegistrationCompletedEvent
 import team.startup.expo.domain.participation.presentation.dto.response.StandardParticipantCreatedEvent
 import team.startup.expo.domain.participation.repository.RegistrationOutboxEventRepository
 import team.startup.expo.global.kafka.RegistrationEventProperties
+import tools.jackson.core.JacksonException
 import tools.jackson.core.type.TypeReference
 import tools.jackson.databind.json.JsonMapper
 import java.time.LocalDateTime
 import java.util.concurrent.TimeUnit
 
 /**
- * 아직 발행하지 않은 아웃박스 이벤트를 Kafka로 보낸다. 오래된 것부터 한 건씩 보내고, 보낸 건은 바로 발행 완료로
- * 표시한다. 한 건이 실패하면 그 건의 시도 횟수만 올리고 이번 회차를 멈춘다(순서를 건너뛰지 않고 다음 회차에 다시 시도한다).
+ * 아직 발행하지 않은 아웃박스 이벤트를 Kafka로 보낸다. 오래된 것부터 한 건씩 보내고, 보낸 건은 바로 발행 완료로 표시한다.
+ *
+ * 순서는 참가자(`participationType`, `participantId`) 단위로 지킨다. 한 건이 실패하면 시도 횟수를 올리고 이번 회차에서
+ * 그 참가자의 뒤 이벤트만 건너뛰며, 다른 참가자의 이벤트는 계속 보낸다. 연달아 [MAX_FAILURES_IN_ROW]건 실패하면 브로커
+ * 장애로 보고 회차를 멈춘다(건마다 전송 시간 제한까지 기다리지 않도록).
+ *
+ * 지속 실패는 격리한다([RegistrationOutboxEvent.quarantinedAt]). payload를 읽을 수 없으면 바로, Kafka가 거부하면 시도가
+ * [MAX_ATTEMPTS]번에 이르고 같은 회차에 다른 이벤트가 발행됐을 때(브로커는 살아 있고 그 레코드만 실패할 때) 격리한다.
+ * 그래서 브로커 장애 동안에는 격리하지 않는다. 격리한 이벤트는 지우거나 발행 완료로 표시하지 않고, 그 참가자의 뒤 이벤트도
+ * 계속 멈춘다. `quarantined_at`을 비우면 같은 `eventId`로 다시 발행한다(V17 마이그레이션 참고).
  *
  * 발행 성공 응답을 받은 뒤 커밋 전에 죽으면 같은 이벤트가 다시 나간다. 같은 `eventId`로 나가므로 소비자는
  * `eventId`로 중복을 걸러야 한다. 박람회 삭제는 발행하지 않은 이벤트만 지우므로, 이미 나간 이벤트를 받은 소비자는 처리 전에
@@ -36,18 +47,53 @@ class RegistrationOutboxPublisher(
     @Transactional
     fun publishPending(): Int {
         var published = 0
+        var failuresInRow = 0
+        val blocked = mutableSetOf<Pair<ParticipationType, Long>>()
+        val failed = mutableListOf<RegistrationOutboxEvent>()
         for (event in registrationOutboxEventRepository.findPendingForUpdate(BATCH_SIZE)) {
+            val participant = event.participationType to event.participantId
+            if (participant in blocked) continue
             try {
                 send(event)
+            } catch (exception: JacksonException) {
+                blocked += participant
+                recordFailure(event, exception)
+                quarantine(event)
+                continue
             } catch (exception: Exception) {
-                event.attempts += 1
-                log.warn("등록 이벤트 발행 실패: eventId={}, attempts={}", event.eventId, event.attempts, exception)
-                break
+                blocked += participant
+                recordFailure(event, exception)
+                failed += event
+                if (++failuresInRow >= MAX_FAILURES_IN_ROW) break
+                continue
             }
+            failuresInRow = 0
             event.publishedAt = LocalDateTime.now()
             published += 1
         }
+        if (published > 0) failed.filter { it.attempts >= MAX_ATTEMPTS }.forEach(::quarantine)
         return published
+    }
+
+    private fun recordFailure(
+        event: RegistrationOutboxEvent,
+        exception: Exception,
+    ) {
+        event.attempts += 1
+        // Kafka 오류는 ExecutionException·KafkaProducerException에 감싸여 오므로 원인을 남긴다
+        event.lastError = NestedExceptionUtils.getMostSpecificCause(exception).toString().take(MAX_ERROR_LENGTH)
+        log.warn("등록 이벤트 발행 실패: eventId={}, attempts={}", event.eventId, event.attempts, exception)
+    }
+
+    private fun quarantine(event: RegistrationOutboxEvent) {
+        event.quarantinedAt = LocalDateTime.now()
+        log.error(
+            "등록 이벤트 격리: eventId={}, participant={}:{}, attempts={}",
+            event.eventId,
+            event.participationType,
+            event.participantId,
+            event.attempts,
+        )
     }
 
     private fun send(event: RegistrationOutboxEvent) {
@@ -86,5 +132,10 @@ class RegistrationOutboxPublisher(
     private companion object {
         const val BATCH_SIZE = 50
         const val SEND_TIMEOUT_SECONDS = 10L
+        const val MAX_ATTEMPTS = 5
+
+        // ponytail: 거부되는 레코드 두 건이 연달아 맨 앞에 있으면 장애와 구분하지 못해 격리하지 않는다. 생기면 실패 건 뒤로 미루기 추가
+        const val MAX_FAILURES_IN_ROW = 2
+        const val MAX_ERROR_LENGTH = 1000
     }
 }
