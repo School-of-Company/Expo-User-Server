@@ -1,6 +1,7 @@
 package team.startup.expo.domain.participation.presentation.dto.response
 
 import team.startup.expo.domain.participation.entity.Occupation
+import team.startup.expo.domain.participation.entity.Region
 import team.startup.expo.domain.training.entity.ApplicationType
 import team.startup.expo.global.dto.InformationResDto
 
@@ -12,6 +13,9 @@ data class StandardParticipantDetailResDto(
     // 문자를 받을 번호. 본인 번호가 없는 동행자는 대표자 번호이고, 대표자 번호도 없으면 null이다
     val notificationPhoneNumber: String?,
     val occupation: Occupation?,
+    // 동행자도 각자 값을 갖는다. 미수집이면 null이고 키는 항상 직렬화한다(Report가 구버전 응답과 구분한다)
+    val region: Region?,
+    val school: String?,
     // 동행자이면 대표자의 id, 대표자 본인이면 null이다
     val representativeId: Long?,
     // 이어진 연수자가 없으면 null이다

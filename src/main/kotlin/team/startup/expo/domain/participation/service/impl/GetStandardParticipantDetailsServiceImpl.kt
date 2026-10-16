@@ -66,6 +66,8 @@ class GetStandardParticipantDetailsServiceImpl(
                     phoneNumber = it.phoneNumber,
                     notificationPhoneNumber = it.phoneNumber ?: it.representativeId?.let(representativePhones::get),
                     occupation = it.occupation,
+                    region = it.region,
+                    school = it.school,
                     representativeId = it.representativeId,
                     linkedTraineeId = traineeIds[it.id],
                     personalInformationStatus = it.personalInformationStatus,
