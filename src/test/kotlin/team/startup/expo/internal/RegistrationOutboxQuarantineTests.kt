@@ -18,7 +18,7 @@ import java.time.Duration
 import java.util.UUID
 
 /**
- * 한 이벤트만 계속 실패할 때 릴레이를 여러 주기 돌려 격리·참가자별 순서·재생을 확인한다. 주기를 테스트가 정하려고
+ * 이벤트가 계속 실패할 때 릴레이를 여러 주기 돌려 격리·참가자별 순서·재생을 확인한다. 주기를 테스트가 정하려고
  * 스케줄러는 끄고 [RegistrationOutboxRelay.relay]를 직접 부른다.
  */
 class RegistrationOutboxQuarantineTests : IntegrationTestSupport() {
@@ -33,29 +33,27 @@ class RegistrationOutboxQuarantineTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `Kafka가 계속 거부하는 이벤트는 독립 참가자를 막지 않고 격리되며 재생하면 같은 eventId로 순서대로 나간다`() {
+    fun `Kafka가 계속 거부하는 서로 다른 참가자의 이벤트 두 건이 맨 앞에 있어도 독립 참가자를 막지 않고 격리되며 재생하면 같은 eventId로 순서대로 나간다`() {
         val rejected = insert(participantId = 1L, participantsJson = participants(1L, "x".repeat(MAX_REQUEST_SIZE)))
+        val otherRejected = insert(participantId = 2L, participantsJson = participants(2L, "x".repeat(MAX_REQUEST_SIZE)))
         val follower = insert(participantId = 1L, participantsJson = participants(1L, "c"))
-        val independent = insert(participantId = 2L)
+        val independent = insert(participantId = 3L)
 
-        repeat(MAX_ATTEMPTS) { relay.relay() }
+        relay.relay()
 
         isPublished(independent) shouldBe true
+
+        repeat(MAX_ATTEMPTS - 1) { relay.relay() }
+
+        for (eventId in listOf(rejected, otherRejected)) {
+            row(eventId)["attempts"] shouldBe MAX_ATTEMPTS
+            row(eventId)["last_error"].toString() shouldContain "RecordTooLarge"
+            isQuarantined(eventId) shouldBe true
+        }
+        relay.relay()
+        relay.relay()
+
         row(rejected)["attempts"] shouldBe MAX_ATTEMPTS
-        row(rejected)["last_error"].toString() shouldContain "RecordTooLarge"
-        // 그 뒤 주기에는 다른 이벤트가 발행되지 않아 브로커 장애와 구분할 수 없으므로 아직 격리하지 않는다
-        isQuarantined(rejected) shouldBe false
-        isPublished(follower) shouldBe false
-
-        val later = insert(participantId = 3L)
-        relay.relay()
-
-        isPublished(later) shouldBe true
-        isQuarantined(rejected) shouldBe true
-        relay.relay()
-        relay.relay()
-
-        row(rejected)["attempts"] shouldBe MAX_ATTEMPTS + 1
         assertPreservedAndHeld(rejected, follower)
 
         jdbcTemplate.update("UPDATE tb_registration_outbox SET participants_json = ? WHERE event_id = ?", participants(1L, "c"), rejected)
