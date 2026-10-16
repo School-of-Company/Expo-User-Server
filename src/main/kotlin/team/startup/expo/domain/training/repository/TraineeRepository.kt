@@ -22,6 +22,33 @@ interface TraineeRepository : JpaRepository<Trainee, Long> {
         @Param("trainingId") trainingId: String,
     ): Int
 
+    fun findByIdAndExpoId(
+        id: Long,
+        expoId: String,
+    ): Trainee?
+
+    /** 영속성 컨텍스트가 아닌 DB의 현재 연결. 조건부 갱신이 0건일 때 누가 먼저 바꿨는지 다시 읽는 데 쓴다. */
+    @Query("SELECT t.standardParticipantId FROM Trainee t WHERE t.id = :id")
+    fun findStandardParticipantIdById(
+        @Param("id") id: Long,
+    ): Long?
+
+    /** 이어지지 않은 연수자만 잇는다. 이미 연결이 있으면(먼저 이은 요청이 있으면) 아무것도 바꾸지 않고 0을 돌려준다. */
+    @Modifying
+    @Query("UPDATE Trainee t SET t.standardParticipantId = :participantId WHERE t.id = :id AND t.standardParticipantId IS NULL")
+    fun linkParticipantIfUnlinked(
+        @Param("id") id: Long,
+        @Param("participantId") participantId: Long,
+    ): Int
+
+    /** 지금 [participantId]에 이어져 있을 때만 연결을 푼다. 다른 연결로 바뀌었으면 0을 돌려준다. */
+    @Modifying
+    @Query("UPDATE Trainee t SET t.standardParticipantId = NULL WHERE t.id = :id AND t.standardParticipantId = :participantId")
+    fun unlinkParticipantIfLinkedTo(
+        @Param("id") id: Long,
+        @Param("participantId") participantId: Long,
+    ): Int
+
     /** 저장된 표기와 정확히 같은 번호. `(expo_id, phone_number)` 유일 인덱스를 탄다. */
     fun findByExpoIdAndPhoneNumber(
         expoId: String,
