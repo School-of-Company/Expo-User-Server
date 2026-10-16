@@ -1,6 +1,8 @@
 package team.startup.expo.internal
 
 import io.kotest.matchers.shouldBe
+import org.hamcrest.Matchers.hasKey
+import org.hamcrest.Matchers.not
 import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -301,6 +303,45 @@ class ParticipantDetailApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `커서 목록은 동행자마다 자기 직업과 지역과 소속을 주고 미수집이면 키를 둔 채 null이다`() {
+        val representative = standard(EXPO, "01000000001", "대표")
+        val student = companion(EXPO, "학생동행", representative)
+        val teacher = companion(EXPO, "교사동행", representative)
+        val unknown = companion(EXPO, "미수집동행", representative)
+        setProfile(representative, "PARENT", "GWANGJU", null)
+        setProfile(student, "ELEMENTARY_STUDENT", "JEONNAM", null)
+        setProfile(teacher, "TEACHER", "OTHER", "빛고을초")
+
+        standardDetails(EXPO)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items[0].participantId").value(representative))
+            .andExpect(jsonPath("$.items[0].occupation").value("PARENT"))
+            .andExpect(jsonPath("$.items[0].region").value("GWANGJU"))
+            .andExpect(jsonPath("$.items[1].participantId").value(student))
+            .andExpect(jsonPath("$.items[1].occupation").value("ELEMENTARY_STUDENT"))
+            .andExpect(jsonPath("$.items[1].region").value("JEONNAM"))
+            .andExpect(jsonPath("$.items[2].participantId").value(teacher))
+            .andExpect(jsonPath("$.items[2].occupation").value("TEACHER"))
+            .andExpect(jsonPath("$.items[2].region").value("OTHER"))
+            .andExpect(jsonPath("$.items[2].school").value("빛고을초"))
+            .andExpect(jsonPath("$.items[3].participantId").value(unknown))
+            // 값이 없어도 키는 빠지지 않는다
+            .andExpect(jsonPath("$.items[0]", hasKey("school")))
+            .andExpect(jsonPath("$.items[0].school").value(nullValue()))
+            .andExpect(jsonPath("$.items[3]", hasKey("occupation")))
+            .andExpect(jsonPath("$.items[3]", hasKey("region")))
+            .andExpect(jsonPath("$.items[3]", hasKey("school")))
+            .andExpect(jsonPath("$.items[3].occupation").value(nullValue()))
+            .andExpect(jsonPath("$.items[3].region").value(nullValue()))
+            .andExpect(jsonPath("$.items[3].school").value(nullValue()))
+        searchIds("occupation=TEACHER") shouldBe (listOf(teacher))
+        // 일괄 조회 응답은 그대로다
+        briefs(EXPO, listOf(teacher))
+            .andExpect(jsonPath("$[0]", not(hasKey("region"))))
+            .andExpect(jsonPath("$[0]", not(hasKey("school"))))
+    }
+
+    @Test
     fun `q는 이름을 대소문자 무시 부분 일치로 찾고 다른 박람회는 찾지 않는다`() {
         val kim = standard(EXPO, "01000000001", "Kim철수")
         standard(EXPO, "01000000002", "이영희")
@@ -467,6 +508,21 @@ class ParticipantDetailApiTests : IntegrationTestSupport() {
         occupation: String,
     ) {
         jdbcTemplate.update("UPDATE tb_standard_participant SET occupation = ? WHERE id = ?", occupation, participantId)
+    }
+
+    private fun setProfile(
+        participantId: Long,
+        occupation: String,
+        region: String,
+        school: String?,
+    ) {
+        jdbcTemplate.update(
+            "UPDATE tb_standard_participant SET occupation = ?, region = ?, school = ? WHERE id = ?",
+            occupation,
+            region,
+            school,
+            participantId,
+        )
     }
 
     private fun link(
