@@ -13,6 +13,7 @@ import team.startup.expo.global.security.ParticipantSessionProperties
 import tools.jackson.databind.json.JsonMapper
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
@@ -30,6 +31,7 @@ class ParticipantSessionServiceImpl(
     private val redis: StringRedisTemplate,
     private val properties: ParticipantSessionProperties,
     private val jsonMapper: JsonMapper,
+    private val clock: Clock = Clock.systemUTC(),
 ) : ParticipantSessionService {
     private val random = SecureRandom()
     private val issueScript = DefaultRedisScript(ISSUE_SCRIPT, Long::class.java)
@@ -40,8 +42,9 @@ class ParticipantSessionServiceImpl(
         code: String,
     ): IssuedParticipantSession? {
         val sessionId = newSessionId()
-        val expiresAt = LocalDateTime.now(ZoneOffset.UTC).plus(properties.ttl)
-        val stored = StoredSession(expoId, phoneNumber, expiresAt.toEpochSecond(ZoneOffset.UTC))
+        // 초 단위로 버리면 Redis TTL(밀리초)보다 최대 1초 일찍 만료되므로 밀리초로 저장한다
+        val expiresAtMillis = clock.millis() + properties.ttl.toMillis()
+        val stored = StoredSession(expoId, phoneNumber, expiresAtMillis)
         val issued =
             redisCall {
                 redis.execute(
@@ -53,7 +56,7 @@ class ParticipantSessionServiceImpl(
                 )
             }
         if (issued != ISSUED) return null
-        return IssuedParticipantSession(sessionId, ParticipantSession(expoId, phoneNumber, expiresAt))
+        return IssuedParticipantSession(sessionId, ParticipantSession(expoId, phoneNumber, toUtc(expiresAtMillis)))
     }
 
     override fun find(sessionId: String): ParticipantSession? {
@@ -65,11 +68,11 @@ class ParticipantSessionServiceImpl(
                 return null
             }
         // TTL이 지났어야 할 값이 남아 있는 경우를 대비해 저장된 만료 시각도 확인한다
-        if (stored.expiresAtEpochSecond <= Instant.now().epochSecond) return null
+        if (stored.expiresAtEpochMilli <= clock.millis()) return null
         return ParticipantSession(
             expoId = stored.expoId,
             phoneNumber = stored.phoneNumber,
-            expiresAt = LocalDateTime.ofEpochSecond(stored.expiresAtEpochSecond, 0, ZoneOffset.UTC),
+            expiresAt = toUtc(stored.expiresAtEpochMilli),
         )
     }
 
@@ -83,6 +86,8 @@ class ParticipantSessionServiceImpl(
         } catch (e: DataAccessException) {
             throw ExpectedException(HttpStatus.SERVICE_UNAVAILABLE, "인증 세션을 처리할 수 없습니다.")
         }
+
+    private fun toUtc(epochMilli: Long) = LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMilli), ZoneOffset.UTC)
 
     private fun sessionKey(sessionId: String) = "$SESSION_PREFIX${hash(sessionId)}"
 
@@ -118,7 +123,7 @@ class ParticipantSessionServiceImpl(
 internal data class StoredSession(
     val expoId: String,
     val phoneNumber: String,
-    val expiresAtEpochSecond: Long,
+    val expiresAtEpochMilli: Long,
 ) {
-    override fun toString() = "StoredSession(expoId=$expoId, phoneNumber=***, expiresAtEpochSecond=$expiresAtEpochSecond)"
+    override fun toString() = "StoredSession(expoId=$expoId, phoneNumber=***, expiresAtEpochMilli=$expiresAtEpochMilli)"
 }
