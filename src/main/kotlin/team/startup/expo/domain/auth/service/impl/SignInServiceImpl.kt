@@ -25,20 +25,21 @@ class SignInServiceImpl(
 
     @Transactional(readOnly = true)
     override fun execute(reqDto: SignInReqDto): TokenResDto {
-        signInAttemptLimiter.requireNotLocked(reqDto.nickname)
+        // 비밀번호를 비교하기 전에 시도를 먼저 차감해, 동시 요청이 몰려도 한도만큼만 비교한다. 실패는 이미 반영되어 있다
+        signInAttemptLimiter.acquire(reqDto.nickname)
 
         val admin = adminRepository.findByNickname(reqDto.nickname)
         // 없는 닉네임과 틀린 비밀번호를 같은 응답과 같은 비용으로 처리해, 어떤 닉네임이 관리자인지 응답이나 시간으로 알 수 없게 한다
         val passwordMatches = passwordEncoder.matches(reqDto.password, admin?.password ?: unknownNicknameHash)
         if (admin == null || !passwordMatches) {
-            signInAttemptLimiter.recordFailure(reqDto.nickname)
             throw ExpectedException(HttpStatus.BAD_REQUEST, "닉네임 또는 비밀번호가 일치하지 않습니다.")
         }
+        // 비밀번호가 맞았으니 승인 전이어도 차감한 시도를 되돌린다. 승인을 기다리며 로그인해 보는 관리자가 스스로 잠기지 않게 한다
+        signInAttemptLimiter.clear(reqDto.nickname)
         if (admin.status != Status.ACCEPTED) {
             throw ExpectedException(HttpStatus.FORBIDDEN, "아직 관리자가 보류 중입니다.")
         }
 
-        signInAttemptLimiter.clear(reqDto.nickname)
         return tokenIssuer.issue(admin)
     }
 }

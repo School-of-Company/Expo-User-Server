@@ -10,6 +10,7 @@ import io.mockk.mockk
 import io.mockk.runs
 import io.mockk.slot
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -64,14 +65,13 @@ class AuthServiceTests :
 
             fun reset() {
                 clearMocks(adminRepository, passwordEncoder, tokenIssuer, limiter)
-                every { limiter.requireNotLocked(any()) } just runs
-                every { limiter.recordFailure(any()) } just runs
+                every { limiter.acquire(any()) } just runs
                 every { limiter.clear(any()) } just runs
             }
 
             `when`("이미 실패 제한에 걸린 닉네임이면") {
                 reset()
-                every { limiter.requireNotLocked("hong") } throws ExpectedException(HttpStatus.TOO_MANY_REQUESTS, "잠시 후 다시 시도해 주세요.")
+                every { limiter.acquire("hong") } throws ExpectedException(HttpStatus.TOO_MANY_REQUESTS, "잠시 후 다시 시도해 주세요.")
 
                 then("429이고 닉네임 조회도 비밀번호 비교도 하지 않는다") {
                     shouldThrow<ExpectedException> { service.execute(request) }.status shouldBe HttpStatus.TOO_MANY_REQUESTS
@@ -85,13 +85,16 @@ class AuthServiceTests :
                 every { passwordEncoder.encode(any()) } returns "unknown-nickname-hash"
                 every { passwordEncoder.matches("plain-password", "unknown-nickname-hash") } returns false
 
-                then("틀린 비밀번호와 같은 400이고 같은 비용으로 비밀번호를 비교하며 실패로 센다") {
+                then("틀린 비밀번호와 같은 400이고 시도를 먼저 차감한 뒤 같은 비용으로 비밀번호를 비교한다") {
                     val error = shouldThrow<ExpectedException> { service.execute(request) }
 
                     error.status shouldBe HttpStatus.BAD_REQUEST
                     error.message shouldBe "닉네임 또는 비밀번호가 일치하지 않습니다."
-                    verify(exactly = 1) { passwordEncoder.matches("plain-password", "unknown-nickname-hash") }
-                    verify(exactly = 1) { limiter.recordFailure("hong") }
+                    verifyOrder {
+                        limiter.acquire("hong")
+                        passwordEncoder.matches("plain-password", "unknown-nickname-hash")
+                    }
+                    verify(exactly = 0) { limiter.clear(any()) }
                     verify(exactly = 0) { tokenIssuer.issue(any()) }
                 }
             }
@@ -100,12 +103,16 @@ class AuthServiceTests :
                 every { adminRepository.findByNickname("hong") } returns admin(Status.ACCEPTED)
                 every { passwordEncoder.matches("plain-password", "encoded-password") } returns false
 
-                then("없는 닉네임과 구분되지 않는 같은 400 메시지이고 실패로 센다") {
+                then("없는 닉네임과 구분되지 않는 같은 400 메시지이고 차감한 시도를 되돌리지 않는다") {
                     val error = shouldThrow<ExpectedException> { service.execute(request) }
 
                     error.status shouldBe HttpStatus.BAD_REQUEST
                     error.message shouldBe "닉네임 또는 비밀번호가 일치하지 않습니다."
-                    verify(exactly = 1) { limiter.recordFailure("hong") }
+                    verifyOrder {
+                        limiter.acquire("hong")
+                        passwordEncoder.matches("plain-password", "encoded-password")
+                    }
+                    verify(exactly = 0) { limiter.clear(any()) }
                     verify(exactly = 0) { tokenIssuer.issue(any()) }
                 }
             }
@@ -114,11 +121,10 @@ class AuthServiceTests :
                 every { adminRepository.findByNickname("hong") } returns admin(Status.PENDING)
                 every { passwordEncoder.matches("plain-password", "encoded-password") } returns true
 
-                then("403이고 토큰을 발급하지 않으며 실패로 세지도 지우지도 않는다") {
+                then("403이고 토큰을 발급하지 않으며 비밀번호는 맞았으니 차감한 시도를 되돌린다") {
                     shouldThrow<ExpectedException> { service.execute(request) }.status shouldBe HttpStatus.FORBIDDEN
                     verify(exactly = 0) { tokenIssuer.issue(any()) }
-                    verify(exactly = 0) { limiter.recordFailure(any()) }
-                    verify(exactly = 0) { limiter.clear(any()) }
+                    verify(exactly = 1) { limiter.clear("hong") }
                 }
             }
             `when`("승인된 관리자의 비밀번호가 맞으면") {
@@ -131,7 +137,6 @@ class AuthServiceTests :
                 then("토큰을 발급하고 실패 횟수를 지운다") {
                     service.execute(request) shouldBe tokens
                     verify(exactly = 1) { limiter.clear("hong") }
-                    verify(exactly = 0) { limiter.recordFailure(any()) }
                 }
             }
         }

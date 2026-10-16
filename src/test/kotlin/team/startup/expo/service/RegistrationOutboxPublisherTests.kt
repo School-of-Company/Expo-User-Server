@@ -54,7 +54,7 @@ class RegistrationOutboxPublisherTests :
             clearMocks(repository, kafkaTemplate)
         }
 
-        given("발행하지 않은 이벤트 세 건이 있을 때") {
+        given("서로 다른 참가자의 이벤트 세 건이 있을 때") {
             `when`("두 번째 발행이 실패하면") {
                 reset()
                 val first = event("e1", 1L)
@@ -63,37 +63,109 @@ class RegistrationOutboxPublisherTests :
                 every { repository.findPendingForUpdate(any()) } returns listOf(first, second, third)
                 every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:1", any()) } returns sent
                 every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:2", any()) } returns failure()
+                every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:3", any()) } returns sent
 
                 val published = publisher.publishPending()
 
-                then("첫 건만 발행 완료로 표시하고 실패한 건은 시도 횟수만 올린다") {
-                    published shouldBe 1
-                    (first.publishedAt != null) shouldBe true
+                then("실패한 건은 시도 횟수와 오류만 남기고 격리하지 않는다") {
+                    published shouldBe 2
                     second.publishedAt shouldBe null
                     second.attempts shouldBe 1
+                    (second.lastError != null) shouldBe true
+                    second.quarantinedAt shouldBe null
                 }
-                then("순서를 건너뛰지 않으려고 세 번째 건은 보내지도 않고 시도 횟수도 올리지 않는다") {
-                    third.publishedAt shouldBe null
+                then("다른 참가자의 이벤트는 막지 않고 발행한다") {
+                    (first.publishedAt != null && third.publishedAt != null) shouldBe true
                     third.attempts shouldBe 0
-                    verify(exactly = 0) { kafkaTemplate.send(any<String>(), "$EXPO:3", any()) }
                 }
             }
 
-            `when`("첫 번째 발행부터 실패하면") {
+            `when`("모든 발행이 실패하면") {
                 reset()
-                val first = event("e1", 1L)
-                val second = event("e2", 2L)
-                every { repository.findPendingForUpdate(any()) } returns listOf(first, second)
+                val first = event("e1", 1L).apply { attempts = 4 }
+                val second = event("e2", 2L).apply { attempts = 4 }
+                val third = event("e3", 3L)
+                every { repository.findPendingForUpdate(any()) } returns listOf(first, second, third)
                 every { kafkaTemplate.send(any<String>(), any<String>(), any()) } returns failure()
 
                 val published = publisher.publishPending()
 
-                then("아무것도 발행하지 않고 오류를 밖으로 던지지 않는다") {
+                then("브로커 장애로 보고 두 건만 시도한 뒤 멈추고 오류를 밖으로 던지지 않는다") {
                     published shouldBe 0
-                    first.attempts shouldBe 1
-                    first.publishedAt shouldBe null
-                    second.attempts shouldBe 0
-                    verify(exactly = 1) { kafkaTemplate.send(any<String>(), any<String>(), any()) }
+                    verify(exactly = 2) { kafkaTemplate.send(any<String>(), any<String>(), any()) }
+                    third.attempts shouldBe 0
+                }
+                then("시도 상한에 이르렀어도 발행된 건이 없으니 격리하지 않는다") {
+                    first.attempts shouldBe 5
+                    second.attempts shouldBe 5
+                    first.quarantinedAt shouldBe null
+                    second.quarantinedAt shouldBe null
+                }
+            }
+        }
+
+        given("한 참가자의 이벤트 두 건과 다른 참가자의 이벤트가 있을 때") {
+            `when`("앞선 참가자의 첫 이벤트가 실패하면") {
+                reset()
+                val first = event("e1", 1L, RegistrationEventType.REGISTERED)
+                val sameParticipant = event("e2", 1L)
+                val other = event("e3", 2L)
+                every { repository.findPendingForUpdate(any()) } returns listOf(first, sameParticipant, other)
+                every { kafkaTemplate.send(REGISTERED_TOPIC, "STANDARD:1", any()) } returns failure()
+                every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:2", any()) } returns sent
+
+                val published = publisher.publishPending()
+
+                then("순서를 뒤집지 않으려고 같은 참가자의 뒤 이벤트는 보내지도 않고 시도 횟수도 올리지 않는다") {
+                    sameParticipant.publishedAt shouldBe null
+                    sameParticipant.attempts shouldBe 0
+                    verify(exactly = 0) { kafkaTemplate.send(any<String>(), "$EXPO:1", any()) }
+                }
+                then("다른 참가자의 이벤트는 발행한다") {
+                    published shouldBe 1
+                    (other.publishedAt != null) shouldBe true
+                }
+            }
+        }
+
+        given("시도 상한 직전의 이벤트가 있을 때") {
+            `when`("또 실패하고 같은 회차에 다른 이벤트는 발행되면") {
+                reset()
+                val failing = event("e1", 1L).apply { attempts = 4 }
+                val other = event("e2", 2L)
+                every { repository.findPendingForUpdate(any()) } returns listOf(failing, other)
+                every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:1", any()) } returns failure()
+                every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:2", any()) } returns sent
+
+                publisher.publishPending() shouldBe 1
+
+                then("그 레코드만 계속 실패한다고 보고 지우거나 발행 완료로 표시하지 않은 채 격리한다") {
+                    failing.attempts shouldBe 5
+                    (failing.quarantinedAt != null) shouldBe true
+                    failing.publishedAt shouldBe null
+                    failing.eventId shouldBe "e1"
+                }
+            }
+        }
+
+        given("payload를 읽을 수 없는 이벤트가 있을 때") {
+            `when`("발행하면") {
+                reset()
+                val broken = event("e1", 1L, RegistrationEventType.REGISTERED, participantsJson = "{not json")
+                val other = event("e2", 2L)
+                every { repository.findPendingForUpdate(any()) } returns listOf(broken, other)
+                every { kafkaTemplate.send(any<String>(), any<String>(), any()) } returns sent
+
+                publisher.publishPending() shouldBe 1
+
+                then("다시 해도 실패하므로 Kafka로 보내지 않고 첫 회차에 바로 격리한다") {
+                    broken.attempts shouldBe 1
+                    (broken.quarantinedAt != null) shouldBe true
+                    broken.publishedAt shouldBe null
+                    verify(exactly = 0) { kafkaTemplate.send(REGISTERED_TOPIC, any<String>(), any()) }
+                }
+                then("다른 참가자의 이벤트는 발행한다") {
+                    (other.publishedAt != null) shouldBe true
                 }
             }
         }
