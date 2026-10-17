@@ -7,6 +7,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
+import org.apache.kafka.common.errors.RecordTooLargeException
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.support.SendResult
 import team.startup.expo.domain.participation.entity.ParticipationType
@@ -49,6 +50,8 @@ class RegistrationOutboxPublisherTests :
         val sent = CompletableFuture.completedFuture(mockk<SendResult<String, String>>())
 
         fun failure(): CompletableFuture<SendResult<String, String>> = CompletableFuture.failedFuture(IllegalStateException("broker down"))
+
+        fun rejected(): CompletableFuture<SendResult<String, String>> = CompletableFuture.failedFuture(RecordTooLargeException("too large"))
 
         fun reset() {
             clearMocks(repository, kafkaTemplate)
@@ -148,6 +151,40 @@ class RegistrationOutboxPublisherTests :
             }
         }
 
+        given("서로 다른 참가자의 Kafka 거부 이벤트 두 건이 맨 앞에 있고 정상 이벤트가 뒤에 있을 때") {
+            `when`("여러 회차 발행하면") {
+                reset()
+                val firstRejected = event("e1", 1L)
+                val secondRejected = event("e2", 2L)
+                val normal = event("e3", 3L)
+                val events = listOf(firstRejected, secondRejected, normal)
+                every { repository.findPendingForUpdate(any()) } answers {
+                    events.filter { it.publishedAt == null && it.quarantinedAt == null }
+                }
+                every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:1", any()) } answers { rejected() }
+                every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:2", any()) } answers { rejected() }
+                every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:3", any()) } returns sent
+
+                val firstRound = publisher.publishPending()
+                repeat(MAX_ATTEMPTS - 1) { publisher.publishPending() }
+
+                then("레코드 거부는 브로커 장애로 세지 않아 첫 회차에 정상 이벤트를 발행한다") {
+                    firstRound shouldBe 1
+                    (normal.publishedAt != null) shouldBe true
+                }
+                then("거부된 두 건은 시도 상한에 이른 회차에 격리되고 발행 완료로 표시하지 않는다") {
+                    firstRejected.attempts shouldBe MAX_ATTEMPTS
+                    secondRejected.attempts shouldBe MAX_ATTEMPTS
+                    (firstRejected.quarantinedAt != null && secondRejected.quarantinedAt != null) shouldBe true
+                    (firstRejected.publishedAt == null && secondRejected.publishedAt == null) shouldBe true
+                }
+                then("격리된 뒤에는 다시 보내지 않는다") {
+                    publisher.publishPending() shouldBe 0
+                    verify(exactly = MAX_ATTEMPTS) { kafkaTemplate.send(any<String>(), "$EXPO:1", any()) }
+                }
+            }
+        }
+
         given("payload를 읽을 수 없는 이벤트가 있을 때") {
             `when`("발행하면") {
                 reset()
@@ -240,5 +277,6 @@ class RegistrationOutboxPublisherTests :
         const val STANDARD_CREATED_TOPIC = "user.standard-participant.created"
         const val EXPO = "0199aaaa-0000-7000-8000-000000000e04"
         const val PHONE = "01012345678"
+        const val MAX_ATTEMPTS = 5
     }
 }
