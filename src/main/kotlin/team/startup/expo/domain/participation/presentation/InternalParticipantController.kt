@@ -141,7 +141,10 @@ class InternalParticipantController(
 
     @Operation(
         summary = "박람회 입장 기록",
-        description = "박람회 id, 전화번호, 응답자 구분으로 참가자를 찾아 오늘의 입장을 기록하고 참가자 정보를 돌려줍니다. 참가자가 없으면 404, 오늘 이미 입장했으면 409입니다.",
+        description =
+            "박람회 id, 전화번호, 응답자 구분으로 참가자를 찾아 오늘의 입장을 기록하고 참가자 정보를 돌려줍니다. " +
+                "입장 스캔이 신청 회차의 입장 시간임을 확인했으면 preregisterSessionId를 함께 보내 회차와 연결하고, 아니면 생략해 회차 없이 기록합니다. " +
+                "연수자에 회차를 보내면 400, 참가자가 없으면 404, 오늘 같은 회차(또는 회차 없이)로 이미 입장했으면 409입니다.",
     )
     @PostMapping("/entries")
     fun recordEntry(
