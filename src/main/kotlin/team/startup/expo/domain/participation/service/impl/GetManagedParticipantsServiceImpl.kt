@@ -27,7 +27,15 @@ class GetManagedParticipantsServiceImpl(
         val participants =
             standardParticipantRepository
                 .findAllByIdOrRepresentativeIdOrderById(representativeId, representativeId)
-                .map { ManagedParticipantResDto(it.id, it.name, it.occupation, representative = it.id == representativeId) }
+                .map {
+                    ManagedParticipantResDto(
+                        it.id,
+                        it.name,
+                        it.occupation,
+                        representative = it.id == representativeId,
+                        applicationType = it.applicationType,
+                    )
+                }
         return GetManagedParticipantsResDto(registered = true, participants = participants)
     }
 }

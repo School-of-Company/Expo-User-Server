@@ -13,6 +13,7 @@ import team.startup.expo.domain.participation.repository.ManagedParticipantView
 import team.startup.expo.domain.participation.repository.StandardParticipantRepository
 import team.startup.expo.domain.participation.service.RepresentativeFinder
 import team.startup.expo.domain.participation.service.impl.SelectManagedParticipantsServiceImpl
+import team.startup.expo.domain.training.entity.ApplicationType
 import team.startup.expo.global.exception.ExpectedException
 
 class SelectManagedParticipantsServiceTests :
@@ -25,11 +26,13 @@ class SelectManagedParticipantsServiceTests :
             id: Long,
             name: String,
             occupation: Occupation?,
+            applicationType: ApplicationType = ApplicationType.PRE,
         ): ManagedParticipantView =
             mockk {
                 every { this@mockk.id } returns id
                 every { this@mockk.name } returns name
                 every { this@mockk.occupation } returns occupation
+                every { this@mockk.applicationType } returns applicationType
             }
 
         fun request(vararg ids: Long) = SelectManagedParticipantsReqDto(EXPO, PHONE, ids.toList())
@@ -40,7 +43,7 @@ class SelectManagedParticipantsServiceTests :
                 listOf(
                     view(1L, "대표", Occupation.TEACHER),
                     view(2L, "동행", null),
-                    view(3L, "동행2", Occupation.PARENT),
+                    view(3L, "동행2", Occupation.PARENT, ApplicationType.FIELD),
                 )
 
             `when`("3번, 1번, 3번 순서로 선택하면") {
@@ -50,6 +53,7 @@ class SelectManagedParticipantsServiceTests :
                     result.map { it.participantId } shouldBe listOf(3L, 1L)
                     result.map { it.representative } shouldBe listOf(false, true)
                     result[0].occupation shouldBe Occupation.PARENT
+                    result.map { it.applicationType } shouldBe listOf(ApplicationType.FIELD, ApplicationType.PRE)
                 }
             }
 
