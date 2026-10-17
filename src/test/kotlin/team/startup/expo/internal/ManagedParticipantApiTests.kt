@@ -43,6 +43,7 @@ class ManagedParticipantApiTests : IntegrationTestSupport() {
             .andExpect(jsonPath("$.participants[0].participantId").value(representative))
             .andExpect(jsonPath("$.participants[0].representative").value(true))
             .andExpect(jsonPath("$.participants[0].occupation").value("TEACHER"))
+            .andExpect(jsonPath("$.participants[0].applicationType").value("PRE"))
             .andExpect(jsonPath("$.participants[1].participantId").value(first))
             .andExpect(jsonPath("$.participants[1].representative").value(false))
             .andExpect(jsonPath("$.participants[1].occupation").value("ELEMENTARY_STUDENT"))
@@ -129,7 +130,7 @@ class ManagedParticipantApiTests : IntegrationTestSupport() {
 
     @Test
     fun `선택한 참가자가 모두 내 관리 대상이면 요청 순서대로 저장된 값을 돌려준다`() {
-        val representative = save("대표", PHONE, Occupation.TEACHER)
+        val representative = save("대표", PHONE, Occupation.TEACHER, applicationType = ApplicationType.FIELD)
         val companion = save("동행", null, Occupation.HIGH_SCHOOL_STUDENT, representative)
 
         select(EXPO, PHONE, listOf(companion, representative, companion))
@@ -138,8 +139,10 @@ class ManagedParticipantApiTests : IntegrationTestSupport() {
             .andExpect(jsonPath("$[0].participantId").value(companion))
             .andExpect(jsonPath("$[0].occupation").value("HIGH_SCHOOL_STUDENT"))
             .andExpect(jsonPath("$[0].representative").value(false))
+            .andExpect(jsonPath("$[0].applicationType").value("PRE"))
             .andExpect(jsonPath("$[1].participantId").value(representative))
             .andExpect(jsonPath("$[1].representative").value(true))
+            .andExpect(jsonPath("$[1].applicationType").value("FIELD"))
     }
 
     @Test
@@ -229,6 +232,7 @@ class ManagedParticipantApiTests : IntegrationTestSupport() {
         occupation: Occupation?,
         representativeId: Long? = null,
         expoId: String = EXPO,
+        applicationType: ApplicationType = ApplicationType.PRE,
     ): Long =
         standardParticipantRepository
             .save(
@@ -237,7 +241,7 @@ class ManagedParticipantApiTests : IntegrationTestSupport() {
                     name = name,
                     phoneNumber = phone,
                     personalInformationStatus = true,
-                    applicationType = ApplicationType.PRE,
+                    applicationType = applicationType,
                     applicationDate = LocalDateTime.of(2026, 10, 1, 10, 0),
                     occupation = occupation,
                     representativeId = representativeId,

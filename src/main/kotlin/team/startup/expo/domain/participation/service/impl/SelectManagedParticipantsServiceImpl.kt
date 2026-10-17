@@ -32,7 +32,13 @@ class SelectManagedParticipantsServiceImpl(
         if (!ids.all(managed::containsKey)) throw notFound()
         return ids.map {
             val view = managed.getValue(it)
-            ManagedParticipantResDto(view.id, view.name, view.occupation, representative = view.id == representativeId)
+            ManagedParticipantResDto(
+                view.id,
+                view.name,
+                view.occupation,
+                representative = view.id == representativeId,
+                applicationType = view.applicationType,
+            )
         }
     }
 
