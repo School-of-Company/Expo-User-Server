@@ -91,6 +91,7 @@ class SwaggerEnabledTests : IntegrationTestSupport() {
                 .map { it.path("name").asString() }
 
         names shouldContain "page"
+        names shouldContain "sessionId"
     }
 
     @Test

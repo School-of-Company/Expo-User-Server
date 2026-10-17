@@ -119,6 +119,67 @@ class ParticipantQueryTests : QueryApiTestSupport() {
     }
 
     @Test
+    fun `sessionId를 주면 date와 상관없이 그 회차로 입장한 참가자만 돌려준다`() {
+        FakeExpoServer.registerSession(EXPO_A, SESSION_1)
+        val first = saveParticipant(EXPO_A, "1회차", "01011112222")
+        val second = saveParticipant(EXPO_A, "2회차", "01033334444")
+        val walkIn = saveParticipant(EXPO_A, "현장", "01055556666")
+        // 같은 날 회차 없이 먼저 입장했다가 회차 시간에 다시 입장한 참가자도 한 번만 나온다
+        attend(first, TODAY)
+        attend(first, TODAY, SESSION_1)
+        attend(second, TODAY, SESSION_2)
+        attend(walkIn, TODAY)
+
+        fetch(EXPO_A, "sessionId" to SESSION_1.toString(), "date" to TODAY.minusDays(1).toString())
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.info.totalPage").value(1))
+            .andExpect(jsonPath("$.info.totalElement").value(1))
+            .andExpect(jsonPath("$.participants.length()").value(1))
+            .andExpect(jsonPath("$.participants[0].id").value(first.id))
+            .andExpect(jsonPath("$.participants[0].name").value("1회차"))
+            .andExpect(jsonPath("$.participants[0].phoneNumber").value("01011112222"))
+            .andExpect(jsonPath("$.participants[0].informationStatus").value(true))
+        // 날짜 조회는 같은 날 두 번 기록된 참가자를 한 번만 센다
+        fetch(EXPO_A).andExpect(jsonPath("$.info.totalElement").value(3)).andExpect(jsonPath("$.participants.length()").value(3))
+    }
+
+    @Test
+    fun `sessionId 조회도 페이지로 나누고 박람회 기간 밖 date는 무시한다`() {
+        FakeExpoServer.registerSession(EXPO_A, SESSION_1)
+        val participants = (1..3).map { saveParticipant(EXPO_A, "참가자$it", "0101111000$it") }
+        participants.forEach { attend(it, TODAY, SESSION_1) }
+
+        fetch(EXPO_A, "sessionId" to SESSION_1.toString(), "page" to "1", "size" to "2", "date" to TODAY.plusDays(10).toString())
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.info.totalPage").value(2))
+            .andExpect(jsonPath("$.info.totalElement").value(3))
+            .andExpect(jsonPath("$.participants.length()").value(1))
+            .andExpect(jsonPath("$.participants[0].id").value(participants[2].id))
+    }
+
+    @Test
+    fun `없는 회차나 다른 박람회의 회차는 404이고 잘못된 sessionId는 400이다`() {
+        FakeExpoServer.register(EXPO_C, TODAY.minusDays(1).toString(), TODAY.plusDays(1).toString())
+        FakeExpoServer.registerSession(EXPO_C, SESSION_2)
+
+        fetch(EXPO_A, "sessionId" to "999").andExpect(status().isNotFound)
+        fetch(EXPO_A, "sessionId" to SESSION_2.toString()).andExpect(status().isNotFound)
+        fetch(EXPO_C, "sessionId" to SESSION_2.toString()).andExpect(status().isOk)
+        fetch(EXPO_A, "sessionId" to "0").andExpect(status().isBadRequest)
+        fetch(EXPO_A, "sessionId" to "abc").andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `회차 확인 중 Expo가 실패하면 503이다`() {
+        FakeExpoServer.registerSession(EXPO_A, SESSION_1)
+        FakeExpoServer.sessionFailureStatus = 500
+
+        fetch(EXPO_A, "sessionId" to SESSION_1.toString()).andExpect(status().isServiceUnavailable)
+        // 날짜 조회는 회차를 확인하지 않는다
+        fetch(EXPO_A).andExpect(status().isOk)
+    }
+
+    @Test
     fun `토큰이 없으면 401이고 승인 전 관리자는 403이다`() {
         mockMvc.perform(get("/participant/$EXPO_A")).andExpect(status().isUnauthorized)
         mockMvc.perform(get("/participant/$EXPO_A").header("Authorization", bearerOf(pendingAdminId))).andExpect(status().isForbidden)
@@ -135,5 +196,7 @@ class ParticipantQueryTests : QueryApiTestSupport() {
 
     private companion object {
         const val EXPO_C = "0199aaaa-0000-7000-8000-0000000000c3"
+        const val SESSION_1 = 11L
+        const val SESSION_2 = 12L
     }
 }

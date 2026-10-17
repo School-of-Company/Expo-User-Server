@@ -21,7 +21,13 @@ import team.startup.expo.domain.participation.service.GetParticipantsService
 class ParticipantController(
     private val getParticipantsService: GetParticipantsService,
 ) {
-    @Operation(summary = "박람회 신청 관람객 조회", description = "date에 입장한 일반 참가자를 페이지 단위로 조회합니다. date를 주지 않으면 오늘입니다.")
+    @Operation(
+        summary = "박람회 신청 관람객 조회",
+        description =
+            "date에 입장한 일반 참가자를 페이지 단위로 조회합니다. date를 주지 않으면 오늘이고, 박람회 기간 밖이면 400입니다. " +
+                "sessionId(사전등록 회차 ID)를 주면 date 대신 그 회차로 입장한 참가자를 조회하며 date는 무시합니다. " +
+                "회차가 없거나 다른 박람회의 회차이면 404입니다. 회차 연결은 이 기능 배포 이후의 입장부터 남습니다.",
+    )
     @GetMapping("/{expo_id}")
     fun getParticipants(
         @PathVariable("expo_id") expoId: String,

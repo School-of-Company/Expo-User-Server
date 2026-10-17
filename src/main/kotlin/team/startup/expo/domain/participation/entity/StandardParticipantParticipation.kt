@@ -18,7 +18,13 @@ import java.time.LocalDateTime
 @Entity
 @Table(
     name = "tb_standard_participant_participation",
-    uniqueConstraints = [UniqueConstraint(columnNames = ["expo_id", "standard_participant_id", "attendance_date"])],
+    // DB 제약은 회차가 NULL인 입장끼리도 중복으로 본다(`NULLS NOT DISTINCT`, V19)
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uk_standard_participant_participation",
+            columnNames = ["expo_id", "standard_participant_id", "attendance_date", "preregister_session_id"],
+        ),
+    ],
 )
 class StandardParticipantParticipation(
     @field:Id
@@ -34,4 +40,7 @@ class StandardParticipantParticipation(
     val standardParticipant: StandardParticipant,
     @field:Column(name = "expo_id", nullable = false, length = 36)
     val expoId: String,
+    /** 신청한 사전등록 회차의 입장 시간에 들어온 입장만 회차가 있다. 현장 입장·신청 없음·시간 밖·V19 이전 기록은 `null`이다. */
+    @field:Column(name = "preregister_session_id")
+    val preregisterSessionId: Long? = null,
 )

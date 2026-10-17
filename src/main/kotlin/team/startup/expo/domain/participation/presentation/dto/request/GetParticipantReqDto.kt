@@ -2,6 +2,7 @@ package team.startup.expo.domain.participation.presentation.dto.request
 
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
+import jakarta.validation.constraints.Positive
 import org.springframework.format.annotation.DateTimeFormat
 import java.time.LocalDate
 
@@ -16,6 +17,9 @@ data class GetParticipantReqDto(
     /** 이 날짜에 입장한 참가자를 조회한다. 없으면 오늘. */
     @field:DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     val date: LocalDate? = null,
+    /** 이 사전등록 회차로 입장한 참가자를 조회한다. 있으면 `date`보다 우선하며 `date`는 무시한다. */
+    @field:Positive
+    val sessionId: Long? = null,
 ) {
     companion object {
         const val DEFAULT_SIZE = 80

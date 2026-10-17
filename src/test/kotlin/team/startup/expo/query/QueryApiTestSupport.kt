@@ -94,6 +94,7 @@ abstract class QueryApiTestSupport : IntegrationTestSupport() {
     protected fun attend(
         participant: StandardParticipant,
         date: LocalDate,
+        sessionId: Long? = null,
     ) {
         participationRepository.save(
             StandardParticipantParticipation(
@@ -101,6 +102,7 @@ abstract class QueryApiTestSupport : IntegrationTestSupport() {
                 attendanceDate = date,
                 standardParticipant = participant,
                 expoId = participant.expoId,
+                preregisterSessionId = sessionId,
             ),
         )
     }

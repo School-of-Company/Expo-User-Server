@@ -95,6 +95,39 @@ class EntryRecordApiTests : IntegrationTestSupport() {
         row["expo_id"] shouldBe EXPO
         row["standard_participant_id"] shouldBe standardId
         row["attendance_date"].toString() shouldBe LocalDate.now(SEOUL).toString()
+        // 회차를 보내지 않은 입장(현장 입장, 신청 없음, 회차 시간 밖)은 회차 없이 남는다
+        row["preregister_session_id"] shouldBe null
+    }
+
+    @Test
+    fun `입장 스캔이 보낸 사전등록 회차를 입장 기록에 남긴다`() {
+        enter("STANDARD", "010-1234-5678", sessionId = 7).andExpect(status().isOk).andExpect(jsonPath("$.id").value(standardId))
+
+        jdbcTemplate.queryForObject("SELECT preregister_session_id FROM tb_standard_participant_participation", Long::class.java) shouldBe
+            7L
+    }
+
+    @Test
+    fun `같은 날 같은 회차로 다시 입장하면 409이고 회차 없이 입장했어도 회차 입장은 따로 남는다`() {
+        enter("STANDARD", "010-1234-5678").andExpect(status().isOk)
+        enter("STANDARD", "010-1234-5678", sessionId = 7).andExpect(status().isOk)
+
+        enter("STANDARD", "010-1234-5678", sessionId = 7).andExpect(status().isConflict)
+        enter("STANDARD", "010-1234-5678").andExpect(status().isConflict)
+
+        jdbcTemplate.queryForList(
+            "SELECT preregister_session_id FROM tb_standard_participant_participation ORDER BY id",
+            Long::class.javaObjectType,
+        ) shouldBe listOf(null, 7L)
+    }
+
+    @Test
+    fun `연수자 입장에 회차를 보내거나 회차 ID가 양수가 아니면 400이고 기록하지 않는다`() {
+        enter("TRAINEE", "01099998888", sessionId = 7).andExpect(status().isBadRequest)
+        enter("STANDARD", "010-1234-5678", sessionId = 0).andExpect(status().isBadRequest)
+
+        count("tb_trainee_participation") shouldBe 0
+        count("tb_standard_participant_participation") shouldBe 0
     }
 
     @Test
@@ -220,12 +253,16 @@ class EntryRecordApiTests : IntegrationTestSupport() {
         type: String,
         phone: String,
         expoId: String = EXPO,
+        sessionId: Long? = null,
     ): ResultActions =
         mockMvc.perform(
             post("/internal/entries")
                 .header("X-Internal-Token", INTERNAL_TOKEN)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"expoId":"$expoId","participationType":"$type","phoneNumber":"$phone"}"""),
+                .content(
+                    """{"expoId":"$expoId","participationType":"$type","phoneNumber":"$phone"""" +
+                        (sessionId?.let { ""","preregisterSessionId":$it""" } ?: "") + "}",
+                ),
         )
 
     private fun count(table: String) = jdbcTemplate.queryForObject("SELECT count(*) FROM $table", Long::class.java)

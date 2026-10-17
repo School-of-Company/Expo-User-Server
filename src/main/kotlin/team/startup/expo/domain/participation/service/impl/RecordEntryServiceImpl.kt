@@ -27,9 +27,12 @@ import java.time.ZoneId
  * 박람회 입장 스캔이 부른다. v1 `PreEnterScanQrCodeServiceImpl`의 참가자 조회와 입장 기록 부분이다.
  * 박람회 기간 확인과 문자 이벤트는 참여 서비스가 한다.
  *
- * 일반 참가자는 `participantId`와 `code`가 오면 그 둘로 찾고(동행자는 번호가 없다), 아니면 `(박람회, 전화번호)`로 찾는다. 연수자는 `(박람회, 전화번호)`로 찾는다. 하루에 한 번만 입장하며(`(expo_id, 참가자, 날짜)`
+ * 일반 참가자는 `participantId`와 `code`가 오면 그 둘로 찾고(동행자는 번호가 없다), 아니면 `(박람회, 전화번호)`로 찾는다. 연수자는 `(박람회, 전화번호)`로 찾는다. 하루에 회차별로 한 번만 입장하며(`(expo_id, 참가자, 날짜, 회차)`
  * 유일 제약) 날이 바뀌면 다시 입장할 수 있다. 조회와 기록은 한 트랜잭션이고, 같은 참가자의 동시 스캔은
  * 유일 제약이 막아 한쪽만 기록되고 나머지는 409이다. 날짜는 날짜별 입장자 목록과 같게 한국 시간 기준이다.
+ *
+ * 사전등록 회차는 입장 스캔이 판정해 `preregisterSessionId`로 보낸다. 참가자의 신청 회차는 신청 서비스가 입장 서비스에만
+ * 알려 주므로 이 서비스는 판정하지 않고 받은 값을 그대로 남긴다. 값이 없으면 회차 없는 입장이다.
  */
 @Service
 class RecordEntryServiceImpl(
@@ -51,6 +54,7 @@ class RecordEntryServiceImpl(
                             attendanceDate = now.toLocalDate(),
                             standardParticipant = participant,
                             expoId = reqDto.expoId,
+                            preregisterSessionId = reqDto.preregisterSessionId,
                         ),
                     )
                 }
@@ -58,6 +62,9 @@ class RecordEntryServiceImpl(
             }
 
             ParticipationType.TRAINEE -> {
+                if (reqDto.preregisterSessionId != null) {
+                    throw ExpectedException(HttpStatus.BAD_REQUEST, "연수자 입장에는 사전등록 회차를 보낼 수 없습니다.")
+                }
                 val phoneNumber = reqDto.phoneNumber?.takeIf { it.isNotBlank() } ?: throw requirePhone()
                 val digits = PhoneNumbers.digitsOnly(phoneNumber)
                 val trainee =

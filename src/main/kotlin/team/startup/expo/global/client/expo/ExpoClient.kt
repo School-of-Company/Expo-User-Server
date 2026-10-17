@@ -14,4 +14,10 @@ interface ExpoClient {
     fun getPeriod(
         @PathVariable("expoId") expoId: String,
     ): ExpoPeriodResDto
+
+    @GetMapping("/internal/expo/{expoId}/preregister-sessions/{sessionId}")
+    fun getPreregisterSession(
+        @PathVariable("expoId") expoId: String,
+        @PathVariable("sessionId") sessionId: Long,
+    ): PreregisterSessionResDto
 }
