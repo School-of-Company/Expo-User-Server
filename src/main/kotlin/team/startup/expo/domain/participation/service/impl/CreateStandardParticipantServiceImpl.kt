@@ -21,8 +21,9 @@ import team.startup.expo.global.util.QuestionSnapshot
 import java.time.LocalDateTime
 
 /**
- * v1 규칙에 동행자를 더했다. 같은 박람회에 같은 번호의 대표자가 있으면 QR 문자를 두 번 보낸 뒤(`smsTryTime >= 2`)에만
- * 거부하고, 아니면 기존 대표자로 성공한다. 없으면 `smsTryTime = 0`으로 만든다.
+ * v1 규칙에 동행자를 더했다. 같은 박람회에 같은 번호의 대표자가 있으면 기존 대표자로 성공한다. 다만 새 동행자 없이 다시
+ * 신청하는 요청(QR 재발송)은 QR 문자를 두 번 보낸 뒤(`smsTryTime >= 2`)에는 거부한다. 새 동행자를 더하는 요청은 이 제한을
+ * 받지 않고 누적 5명 한도만 받는다. 없으면 `smsTryTime = 0`으로 만든다.
  *
  * 신청 답변에 동행자가 있으면 동행자도 참가자 한 행으로 만들어 대표자에 딸린다. 이번 문자에 담을 참가자는
  * 처음이면 대표자와 동행자 전원, 재신청이면 새 동행자만이고 새 동행자가 없으면 기존 전원(QR 재발송)이다.
@@ -56,9 +57,6 @@ class CreateStandardParticipantServiceImpl(
                 }
         if (existing == null) return registerNew(reqDto, companions)
 
-        if (existing.smsTryTime >= MAX_SMS_TRY_TIME) {
-            throw ExpectedException(HttpStatus.CONFLICT, "이미 신청한 참가자입니다.")
-        }
         return registerAgain(reqDto, existing, companions)
     }
 
@@ -87,6 +85,11 @@ class CreateStandardParticipantServiceImpl(
         val registered = standardParticipantRepository.findAllByRepresentativeIdOrderById(representative.id!!)
         val known = registered.map { listOf(it.name, it.occupation, it.school) }.toSet()
         val added = companions.filter { it.key !in known }
+        // 반복 재신청으로 QR 문자가 계속 나가는 것을 막는 제한이다. 새 동행자를 실제로 더하는 요청은 대상이 아니다 — 새 사람은 아래
+        // 누적 5명 한도가 따로 막는다. 이 검사를 새 동행자까지 걸면 한 명을 더한 뒤(`smsTryTime = 2`) 나머지 동행자를 더할 수 없다.
+        if (added.isEmpty() && representative.smsTryTime >= MAX_SMS_TRY_TIME) {
+            throw ExpectedException(HttpStatus.CONFLICT, "이미 신청한 참가자입니다.")
+        }
         if (1 + registered.size + added.size > Companions.MAX_PARTICIPANTS) {
             throw ExpectedException(HttpStatus.CONFLICT, "대표자를 포함해 최대 ${Companions.MAX_PARTICIPANTS}명까지 신청할 수 있습니다.")
         }

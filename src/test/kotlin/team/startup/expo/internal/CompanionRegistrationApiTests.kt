@@ -248,13 +248,37 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `문자를 두 번 보낸 대표자는 동행자를 더하지 못한다`() {
+    fun `문자를 두 번 보낸 대표자도 새 동행자는 누적 5명까지 더할 수 있다`() {
         register(ALICE).andExpect(status().isCreated)
         repeat(2) { smsTry() }
 
+        // 동행자를 한 명씩 나눠 더해도 문자 횟수(smsTryTime)와 무관하게 계속 더해진다.
+        register(ALICE, BOB).andExpect(status().isCreated)
+        smsTry()
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+
+        count("tb_standard_participant") shouldBe 3
+    }
+
+    @Test
+    fun `문자를 두 번 보낸 대표자의 새 동행자도 누적 5명은 넘을 수 없다`() {
+        register(ALICE, BOB, CAROL, DAVE).andExpect(status().isCreated)
+        repeat(2) { smsTry() }
+
+        register(ALICE, EVE, FRANK).andExpect(status().isConflict)
+
+        count("tb_standard_participant") shouldBe 4
+    }
+
+    @Test
+    fun `문자를 두 번 보낸 대표자가 새 동행자 없이 다시 신청하면 거부한다`() {
+        register(ALICE, BOB).andExpect(status().isCreated)
+        repeat(2) { smsTry() }
+
+        // 이미 있는 사람만 다시 보내는 재신청(QR 재발송)은 반복 발송을 막으려고 기존처럼 거부한다.
         register(ALICE, BOB).andExpect(status().isConflict)
 
-        count("tb_standard_participant") shouldBe 1
+        count("tb_standard_participant") shouldBe 2
     }
 
     @Test
