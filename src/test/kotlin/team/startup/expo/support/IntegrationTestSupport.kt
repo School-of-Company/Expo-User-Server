@@ -72,6 +72,7 @@ abstract class IntegrationTestSupport {
             registry.add("clients.expo.url") { FakeExpoServer.url }
             registry.add("clients.expo.internal-token") { FakeExpoServer.TOKEN }
             registry.add("clients.notification.url") { FakeNotificationServer.url }
+            registry.add("clients.notification.internal-token") { FakeNotificationServer.TOKEN }
         }
 
         /** 서비스가 서명한 토큰을 테스트에서 검증할 수 있도록 키쌍을 한 번만 만들어 공유한다. */
