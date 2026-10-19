@@ -94,12 +94,18 @@ class CreateStandardParticipantServiceImpl(
             throw ExpectedException(HttpStatus.CONFLICT, "대표자를 포함해 최대 ${Companions.MAX_PARTICIPANTS}명까지 신청할 수 있습니다.")
         }
         val created = added.map { save(newCompanion(reqDto, representative.id!!, it)) }
+        // 취소된 동행자 중 다시 신청하지 않은 사람은 `released`로 표시해 `managed` 목록에서 뺀다. 다시 신청한 사람은 되돌린다.
+        // 요청에 `releasedParticipantIds`가 없으면 기존 표시를 건드리지 않는다
+        val requested = companions.map { it.key }.toSet()
+        registered.forEach {
+            when {
+                listOf(it.name, it.occupation, it.school) in requested -> it.changeReleased(false)
+                it.id in released -> it.changeReleased(true)
+            }
+        }
         // 이번 일행: 대표자, 취소되지 않았거나 이번에 다시 신청한 기존 동행자, 새 동행자(`id` 순서). 다시 신청하지 않은 취소 동행자만
         // 빠지므로 `releasedParticipantIds`가 없으면 기존 동행자 전원이다
-        val requested = companions.map { it.key }.toSet()
-        val group =
-            listOf(representative) + registered.filter { it.id !in released || listOf(it.name, it.occupation, it.school) in requested } +
-                created
+        val group = listOf(representative) + registered.filterNot { it.released } + created
         // 응답의 `participantIds`: 새 동행자가 있으면 그들만(문자 대상), 없으면 이번 일행(문자는 보내지 않음). 일행의 부분집합이어야 한다
         val texted = if (created.isEmpty()) group else created
         return CreateStandardParticipantResDto(
