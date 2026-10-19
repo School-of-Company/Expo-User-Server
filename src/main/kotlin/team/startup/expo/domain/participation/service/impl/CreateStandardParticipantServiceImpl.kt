@@ -86,20 +86,19 @@ class CreateStandardParticipantServiceImpl(
         val registered = standardParticipantRepository.findAllByRepresentativeIdOrderById(representative.id!!)
         val known = registered.map { listOf(it.name, it.occupation, it.school) }.toSet()
         val added = companions.filter { it.key !in known }
-        // 신청이 취소된 동행자(`releasedParticipantIds`)는 한도에서 뺀다. `registered`에는 대표자 본인이 없고 이 대표자의 동행자만
+        // 신청이 취소된 동행자(`releasedParticipantIds`) 중 이번 요청에도 없는 사람만 한도와 일행에서 뺀다. 이번에 다시 신청한 사람은
+        // 되살아나므로 한도에도 센다. 한도와 일행이 같은 `live`를 쓴다. `registered`에는 대표자 본인이 없고 이 대표자의 동행자만
         // 있으므로, 대표자 본인·다른 대표자의 ID·없는 ID는 맞는 행이 없어 무시된다
         val released = reqDto.releasedParticipantIds.orEmpty().toSet()
-        val active = registered.count { it.id !in released }
-        if (1 + active + added.size > Companions.MAX_PARTICIPANTS) {
+        val requested = companions.map { it.key }.toSet()
+        val live = registered.filter { it.id !in released || listOf(it.name, it.occupation, it.school) in requested }
+        if (1 + live.size + added.size > Companions.MAX_PARTICIPANTS) {
             throw ExpectedException(HttpStatus.CONFLICT, "대표자를 포함해 최대 ${Companions.MAX_PARTICIPANTS}명까지 신청할 수 있습니다.")
         }
         val created = added.map { save(newCompanion(reqDto, representative.id!!, it)) }
         // 이번 일행: 대표자, 취소되지 않았거나 이번에 다시 신청한 기존 동행자, 새 동행자(`id` 순서). 다시 신청하지 않은 취소 동행자만
         // 빠지므로 `releasedParticipantIds`가 없으면 기존 동행자 전원이다
-        val requested = companions.map { it.key }.toSet()
-        val group =
-            listOf(representative) + registered.filter { it.id !in released || listOf(it.name, it.occupation, it.school) in requested } +
-                created
+        val group = listOf(representative) + live + created
         // 응답의 `participantIds`: 새 동행자가 있으면 그들만(문자 대상), 없으면 이번 일행(문자는 보내지 않음). 일행의 부분집합이어야 한다
         val texted = if (created.isEmpty()) group else created
         return CreateStandardParticipantResDto(
