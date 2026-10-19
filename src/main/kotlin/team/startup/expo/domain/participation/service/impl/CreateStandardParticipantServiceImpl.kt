@@ -26,7 +26,8 @@ import java.time.LocalDateTime
  * 그 동행자만 문자 대상이다. 누적 5명 한도는 요청의 `releasedParticipantIds`(취소된 동행자)를 뺀 인원으로 센다. 없으면 `smsTryTime = 0`으로 만든다.
  *
  * 신청 답변에 동행자가 있으면 동행자도 참가자 한 행으로 만들어 대표자에 딸린다. 이번 문자에 담을 참가자는
- * 처음이면 대표자와 동행자 전원, 재신청이면 새 동행자만이다(새 동행자가 없으면 문자는 없고 응답에만 기존 전원을 담는다).
+ * 처음이면 대표자와 동행자 전원, 재신청이면 새 동행자만이다(새 동행자가 없으면 문자는 없고 응답에만 이번 일행을 담는다).
+ * 재신청 응답의 일행에서는 취소된 동행자 중 이번에 다시 신청하지 않은 사람만 뺀다.
  * 같은 대표자 밑에서 이름·구분·소속이 모두 같은 동행자는 같은 사람이라 새로 만들지 않으며, 대표자를 포함한 인원은
  * 누적해서 최대 5명이다(요청이 알려 준 취소된 동행자는 뺀다). 기존 참가자의 `code`는 바뀌지 않는다.
  *
@@ -93,18 +94,24 @@ class CreateStandardParticipantServiceImpl(
             throw ExpectedException(HttpStatus.CONFLICT, "대표자를 포함해 최대 ${Companions.MAX_PARTICIPANTS}명까지 신청할 수 있습니다.")
         }
         val created = added.map { save(newCompanion(reqDto, representative.id!!, it)) }
-        // 응답의 `participantIds`: 새 동행자가 있으면 그들만(문자 대상), 없으면 대표자와 기존 일행(문자는 보내지 않음)
-        val texted = if (created.isEmpty()) listOf(representative) + registered else created
+        // 이번 일행: 대표자, 취소되지 않았거나 이번에 다시 신청한 기존 동행자, 새 동행자(`id` 순서). 다시 신청하지 않은 취소 동행자만
+        // 빠지므로 `releasedParticipantIds`가 없으면 기존 동행자 전원이다
+        val requested = companions.map { it.key }.toSet()
+        val group =
+            listOf(representative) + registered.filter { it.id !in released || listOf(it.name, it.occupation, it.school) in requested } +
+                created
+        // 응답의 `participantIds`: 새 동행자가 있으면 그들만(문자 대상), 없으면 이번 일행(문자는 보내지 않음). 일행의 부분집합이어야 한다
+        val texted = if (created.isEmpty()) group else created
         return CreateStandardParticipantResDto(
             participantId = representative.id!!,
             phoneNumber = representative.phoneNumber!!,
             created = created.isNotEmpty(),
             participantIds = texted.map { it.id!! },
-            // 대표자, 기존 동행자, 이번에 더한 동행자 전체(`id` 순서). 문자 대상과 달리 새 동행자만 있어도 일행 전체다
-            groupParticipantIds = (listOf(representative) + registered + created).map { it.id!! },
+            // 문자 대상과 달리 새 동행자만 있어도 일행 전체다
+            groupParticipantIds = group.map { it.id!! },
             createdIds = created.map { it.id!! },
             participants = texted.map { RegisteredParticipant(it.id!!, it.code) },
-            // 새 동행자가 없으면 기존 QR을 그대로 쓰므로 문자를 보내지 않는다. `participantIds`는 그대로 기존 일행을 담는다
+            // 새 동행자가 없으면 기존 QR을 그대로 쓰므로 문자를 보내지 않는다. `participantIds`는 그대로 이번 일행을 담는다
             smsSkipped = created.isEmpty(),
         )
     }
