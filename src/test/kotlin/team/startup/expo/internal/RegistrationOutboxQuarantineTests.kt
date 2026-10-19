@@ -101,7 +101,10 @@ class RegistrationOutboxQuarantineTests : IntegrationTestSupport() {
 
         relay.relay()
 
+        // 한 회차에는 참가자당 한 건만 나가므로 뒤 이벤트는 다음 회차에 나간다
         isPublished(quarantined) shouldBe true
+        isPublished(follower) shouldBe false
+        relay.relay()
         isPublished(follower) shouldBe true
         awaitRegisteredEventIds(setOf(quarantined, follower)) shouldBe listOf(quarantined, follower)
     }

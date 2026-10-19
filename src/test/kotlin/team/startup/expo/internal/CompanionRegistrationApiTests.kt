@@ -240,6 +240,68 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `취소됐다가 다시 신청한 동행자도 한도에 세어 새 동행자를 더해 5명을 넘기면 409다`() {
+        register(ALICE, BOB, CAROL, DAVE, EVE).andExpect(status().isCreated)
+        val (_, bob, carol, dave) = allIds()
+
+        register(ALICE, BOB, CAROL, DAVE, FRANK, released = listOf(bob, carol, dave)).andExpect(status().isConflict)
+
+        count("tb_standard_participant") shouldBe 5
+    }
+
+    @Test
+    fun `취소됐던 동행자를 다시 신청해도 5명을 넘지 않으면 일행에 되살아난다`() {
+        register(ALICE, BOB, CAROL, DAVE, EVE).andExpect(status().isCreated)
+        val (alice, bob, carol, dave, eve) = allIds()
+
+        val body = bodyOf(register(ALICE, BOB, FRANK, released = listOf(bob, carol, dave)), 201)
+
+        val frank = idsOf(FRANK).single()
+        longs(body, "groupParticipantIds") shouldBe listOf(alice, bob, eve, frank)
+    }
+
+    @Test
+    fun `이전 재신청에서 취소로 표시된 동행자는 이번 요청에 없고 취소 목록에도 없으면 한도에 세지 않고 일행에도 없다`() {
+        register(ALICE, BOB, CAROL, DAVE, EVE).andExpect(status().isCreated)
+        val (alice, bob, carol, dave, eve) = allIds()
+        register(ALICE, BOB, released = listOf(carol, dave, eve)).andExpect(status().isOk)
+
+        val body = bodyOf(register(ALICE, BOB, FRANK), 201)
+
+        val frank = idsOf(FRANK).single()
+        longs(body, "groupParticipantIds") shouldBe listOf(alice, bob, frank)
+    }
+
+    @Test
+    fun `일행 전체를 취소하고 새 동행자로 재신청해도 managed 목록은 5명을 넘지 않는다`() {
+        register(ALICE, BOB, CAROL, DAVE, EVE).andExpect(status().isCreated)
+        val (alice, bob, carol, dave, eve) = allIds()
+
+        val body = bodyOf(register(ALICE, FRANK, released = listOf(bob, carol, dave, eve)), 201)
+
+        val frank = idsOf(FRANK).single()
+        longs(body, "groupParticipantIds") shouldBe listOf(alice, frank)
+        // 행과 code는 남는다
+        count("tb_standard_participant") shouldBe 6
+        managedIds() shouldBe listOf(alice, frank)
+    }
+
+    @Test
+    fun `취소됐던 동행자가 다시 신청하면 managed 목록에 돌아오고 취소 목록이 없는 재신청은 표시를 바꾸지 않는다`() {
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+        val (alice, bob, carol) = allIds()
+
+        register(ALICE, BOB, released = listOf(bob, carol)).andExpect(status().isOk)
+        managedIds() shouldBe listOf(alice, bob)
+
+        register(ALICE, BOB).andExpect(status().isOk)
+        managedIds() shouldBe listOf(alice, bob)
+
+        register(ALICE, BOB, CAROL).andExpect(status().isOk)
+        managedIds() shouldBe listOf(alice, bob, carol)
+    }
+
+    @Test
     fun `같은 requestId의 재시도는 그 사이 다른 신청이 동행자를 더해도 처음의 일행 전체를 돌려준다`() {
         val requestId = UUID.randomUUID().toString()
         val first =
@@ -528,6 +590,14 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
             .path(field)
             .toList()
             .map { it.asLong() }
+
+    private fun managedIds(): List<Long> =
+        mapper
+            .readTree(
+                bodyOf(post("/internal/standard-participants/managed", """{"expoId":"$EXPO","phoneNumber":"$PHONE"}"""), 200),
+            ).path("participants")
+            .toList()
+            .map { it.path("participantId").asLong() }
 
     private fun count(from: String) = jdbcTemplate.queryForObject("SELECT count(*) FROM $from", Long::class.java)
 

@@ -66,6 +66,13 @@ class ParticipantSessionTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `인증번호 요청에 Notification 내부 토큰을 실어 내부 상한으로 세게 한다`() {
+        sendCode(EXPO, PHONE).andExpect(status().isOk)
+
+        FakeNotificationServer.sendTokens shouldBe listOf(FakeNotificationServer.TOKEN)
+    }
+
+    @Test
     fun `없는 박람회는 404이고 문자를 요청하지 않는다`() {
         sendCode("0199aaaa-0000-7000-8000-00000000ffff", PHONE).andExpect(status().isNotFound)
 

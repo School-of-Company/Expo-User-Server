@@ -71,7 +71,17 @@ class StandardParticipant(
     var smsTryTime: Int = smsTryTime
         protected set
 
+    // 신청 서비스가 취소했다고 알린 동행자이고 이후 다시 신청하지 않았으면 true다. 대표자의 관리 목록(`managed`)에서만 빠지며
+    // 행과 `code`는 그대로 남는다. 같은 동행자가 다시 신청하면 false로 돌아온다
+    @field:Column(name = "released", nullable = false)
+    var released: Boolean = false
+        protected set
+
     fun plusSmsTryTime() {
         smsTryTime++
+    }
+
+    fun changeReleased(released: Boolean) {
+        this.released = released
     }
 }
