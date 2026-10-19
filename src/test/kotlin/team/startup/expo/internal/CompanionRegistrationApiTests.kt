@@ -240,6 +240,27 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `취소됐다가 다시 신청한 동행자도 한도에 세어 새 동행자를 더해 5명을 넘기면 409다`() {
+        register(ALICE, BOB, CAROL, DAVE, EVE).andExpect(status().isCreated)
+        val (_, bob, carol, dave) = allIds()
+
+        register(ALICE, BOB, CAROL, DAVE, FRANK, released = listOf(bob, carol, dave)).andExpect(status().isConflict)
+
+        count("tb_standard_participant") shouldBe 5
+    }
+
+    @Test
+    fun `취소됐던 동행자를 다시 신청해도 5명을 넘지 않으면 일행에 되살아난다`() {
+        register(ALICE, BOB, CAROL, DAVE, EVE).andExpect(status().isCreated)
+        val (alice, bob, carol, dave, eve) = allIds()
+
+        val body = bodyOf(register(ALICE, BOB, FRANK, released = listOf(bob, carol, dave)), 201)
+
+        val frank = idsOf(FRANK).single()
+        longs(body, "groupParticipantIds") shouldBe listOf(alice, bob, eve, frank)
+    }
+
+    @Test
     fun `같은 requestId의 재시도는 그 사이 다른 신청이 동행자를 더해도 처음의 일행 전체를 돌려준다`() {
         val requestId = UUID.randomUUID().toString()
         val first =
