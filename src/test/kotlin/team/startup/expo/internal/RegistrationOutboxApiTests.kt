@@ -38,13 +38,14 @@ class RegistrationOutboxApiTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `QR 재발송이 허용된 기존 참가자는 등록 완료 이벤트만 새로 남긴다`() {
+    fun `새 동행자 없는 재신청은 발송 횟수와 무관하게 이벤트를 새로 남기지 않는다`() {
         standard(PHONE).andExpect(status().isCreated)
 
         standard(PHONE).andExpect(status().isOk)
+        repeat(2) { smsTry() }
+        standard(PHONE).andExpect(status().isOk)
 
-        events().map { it["event_type"] } shouldBe listOf("REGISTERED", "STANDARD_CREATED", "REGISTERED")
-        events().map { it["event_id"] }.toSet().size shouldBe 3
+        events().map { it["event_type"] } shouldBe listOf("REGISTERED", "STANDARD_CREATED")
     }
 
     @Test
@@ -62,17 +63,6 @@ class RegistrationOutboxApiTests : IntegrationTestSupport() {
         events.map { it["event_type"] } shouldBe listOf("REGISTERED")
         events.single()["participation_type"] shouldBe "TRAINEE"
         events.single()["participant_id"] shouldBe jdbcTemplate.queryForObject("SELECT id FROM tb_trainee", Long::class.java)
-    }
-
-    @Test
-    fun `거부된 등록은 참가자도 이벤트도 남기지 않는다`() {
-        standard(PHONE).andExpect(status().isCreated)
-        repeat(2) { smsTry() }
-        val before = count("tb_registration_outbox")
-
-        standard(PHONE).andExpect(status().isConflict)
-
-        count("tb_registration_outbox") shouldBe before
     }
 
     @Test
