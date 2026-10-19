@@ -50,6 +50,7 @@ clients:
     internal-token: ${EXPO_INTERNAL_TOKEN}
   notification:
     url: ${NOTIFICATION_URL:}
+    internal-token: ${NOTIFICATION_INTERNAL_TOKEN:}
 qr-sms-sent:
   topic: ${KAFKA_QR_SMS_SENT_TOPIC:notification.qr-sms.sent}
   dead-letter-topic: ${KAFKA_QR_SMS_SENT_DEAD_LETTER_TOPIC:notification.qr-sms.sent.dlt}
