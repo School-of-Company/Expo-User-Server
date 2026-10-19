@@ -33,4 +33,14 @@ class CreateStandardParticipantReqDtoSerializationTests {
     fun `region이 있으면 직렬화에 싣는다`() {
         mapper.writeValueAsString(dto(Region.GWANGJU)).contains(""""region":"GWANGJU"""") shouldBe true
     }
+
+    @Test
+    fun `releasedParticipantIds가 없으면 직렬화에 싣지 않고 있으면 싣는다`() {
+        mapper.writeValueAsString(dto(null)).contains("releasedParticipantIds") shouldBe false
+        mapper
+            .writeValueAsString(
+                dto(null).copy(releasedParticipantIds = listOf(1L, 2L)),
+            ).contains(""""releasedParticipantIds":[1,2]""") shouldBe
+            true
+    }
 }
