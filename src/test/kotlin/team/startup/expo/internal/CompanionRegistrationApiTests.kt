@@ -189,6 +189,57 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `취소된 동행자 중 일부만 다시 신청하면 다시 신청하지 않은 동행자는 일행에서 빠진다`() {
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+        val (alice, bob, carol) = allIds()
+        val events = count("tb_registration_outbox WHERE event_type = 'REGISTERED'")
+
+        val body = bodyOf(register(ALICE, BOB, released = listOf(bob, carol)), 200)
+
+        longs(body, "groupParticipantIds") shouldBe listOf(alice, bob)
+        // 새 동행자가 없으므로 문자 대상 목록도 이번 일행이고, 일행의 부분집합이다
+        longs(body, "participantIds") shouldBe listOf(alice, bob)
+        count("tb_standard_participant") shouldBe 3
+        count("tb_registration_outbox WHERE event_type = 'REGISTERED'") shouldBe events
+    }
+
+    @Test
+    fun `취소된 동행자 중 일부를 다시 신청하며 새 동행자를 더하면 새 동행자만 문자 대상이다`() {
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+        val (alice, bob, carol) = allIds()
+
+        val body = bodyOf(register(ALICE, BOB, DAVE, released = listOf(bob, carol)), 201)
+
+        val dave = idsOf(DAVE).single()
+        longs(body, "groupParticipantIds") shouldBe listOf(alice, bob, dave)
+        longs(body, "participantIds") shouldBe listOf(dave)
+    }
+
+    @Test
+    fun `취소된 동행자를 아무도 다시 신청하지 않으면 일행은 대표자뿐이다`() {
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+        val (alice, bob, carol) = allIds()
+
+        val body = bodyOf(register(ALICE, released = listOf(bob, carol)), 200)
+
+        longs(body, "groupParticipantIds") shouldBe listOf(alice)
+        longs(body, "participantIds") shouldBe listOf(alice)
+    }
+
+    @Test
+    fun `취소된 동행자를 전부 다시 신청하거나 취소 목록이 비면 일행은 기존 전원이다`() {
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+        val ids = allIds()
+
+        listOf(ids.drop(1), emptyList()).forEach { released ->
+            val body = bodyOf(register(ALICE, BOB, CAROL, released = released), 200)
+
+            longs(body, "groupParticipantIds") shouldBe ids
+            longs(body, "participantIds") shouldBe ids
+        }
+    }
+
+    @Test
     fun `같은 requestId의 재시도는 그 사이 다른 신청이 동행자를 더해도 처음의 일행 전체를 돌려준다`() {
         val requestId = UUID.randomUUID().toString()
         val first =
