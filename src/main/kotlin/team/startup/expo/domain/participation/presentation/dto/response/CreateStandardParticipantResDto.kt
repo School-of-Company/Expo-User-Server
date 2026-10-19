@@ -22,4 +22,7 @@ data class CreateStandardParticipantResDto(
     val createdIds: List<Long> = emptyList(),
     @get:JsonIgnore
     val participants: List<RegisteredParticipant> = emptyList(),
+    // 새 동행자 없는 재신청이라 등록 완료 이벤트(문자)를 만들지 않는다. 이벤트를 만드는 데만 쓰며 본문에는 싣지 않는다
+    @get:JsonIgnore
+    val smsSkipped: Boolean = false,
 )

@@ -131,14 +131,13 @@ class RegistrationIdempotencyApiTests : IntegrationTestSupport() {
 
     @Test
     fun `실패한 등록의 requestId는 기록이 남지 않아 다시 처리한다`() {
-        standard(null).andExpect(status().isCreated)
-        repeat(2) { smsTry(PHONE) }
+        jdbcTemplate.update("INSERT INTO tb_expo_deletion (expo_id, started_at) VALUES (?, now())", EXPO)
         standard(REQUEST_A).andExpect(status().isConflict)
         count("tb_registration_request") shouldBe 0
 
-        jdbcTemplate.update("UPDATE tb_standard_participant SET sms_try_time = 0")
+        jdbcTemplate.update("DELETE FROM tb_expo_deletion")
 
-        standard(REQUEST_A).andExpect(status().isOk)
+        standard(REQUEST_A).andExpect(status().isCreated)
         count("tb_registration_request") shouldBe 1
     }
 

@@ -74,11 +74,14 @@ class ParticipantCreateApiTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `발송 횟수가 2 이상이면 409이다`() {
-        createStandard(phone = PHONE).andExpect(status().isCreated)
+    fun `발송 횟수가 2 이상이어도 재신청은 200이다`() {
+        val id = createStandard(phone = PHONE).andExpect(status().isCreated).andReturn().participantId()
         repeat(2) { smsTry("STANDARD", PHONE).andExpect(status().isNoContent) }
 
-        createStandard(phone = PHONE).andExpect(status().isConflict)
+        createStandard(phone = PHONE)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.participantId").value(id))
+        count("tb_standard_participant") shouldBe 1
     }
 
     @Test

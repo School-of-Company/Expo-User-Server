@@ -1,6 +1,7 @@
 package team.startup.expo.domain.participation.presentation.dto.request
 
 import com.fasterxml.jackson.annotation.JsonInclude
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
@@ -41,4 +42,13 @@ data class CreateStandardParticipantReqDto(
     // Application의 `Idempotency-Key`. 같은 등록의 재시도에는 같은 값을 보낸다. 없으면 멱등 처리 없이 등록한다
     @field:Size(min = 1, max = 100)
     val requestId: String? = null,
+    // 없을 때는 싣지 않아 이 필드가 생기기 전 요청의 fingerprint를 유지한다
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
+    @field:Schema(
+        description =
+            "신청이 취소된 이 대표자의 동행자 참가자 ID. 재신청의 누적 5명 한도 계산에서만 뺀다(참가자 행과 QR은 그대로). " +
+                "대표자 본인, 이 대표자의 동행자가 아닌 ID, 없는 ID는 무시한다. 없으면 기존 동작과 같다.",
+        nullable = true,
+    )
+    val releasedParticipantIds: List<Long>? = null,
 )

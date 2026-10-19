@@ -59,7 +59,7 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `같은 번호로 같은 동행자를 다시 신청하면 사람을 만들지 않고 기존 전원의 문자를 다시 보낸다`() {
+    fun `같은 번호로 같은 동행자를 다시 신청하면 사람을 만들지 않고 문자 이벤트도 만들지 않는다`() {
         register(ALICE, BOB).andExpect(status().isCreated)
         val codes = codes()
 
@@ -67,9 +67,7 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
 
         count("tb_standard_participant") shouldBe 2
         codes() shouldBe codes
-        val events = registeredParticipants()
-        events.size shouldBe 2
-        events.last().map { it.path("code").asString() } shouldBe codes
+        registeredParticipants().size shouldBe 1
         count("tb_registration_outbox WHERE event_type = 'STANDARD_CREATED'") shouldBe 2
     }
 
@@ -271,14 +269,55 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `문자를 두 번 보낸 대표자가 새 동행자 없이 다시 신청하면 거부한다`() {
+    fun `새 동행자 없는 재신청은 발송 횟수가 0 1 2 어느 쪽이든 200이고 기존 QR 그대로 문자 이벤트를 만들지 않는다`() {
+        register(ALICE, BOB).andExpect(status().isCreated)
+        val ids = allIds()
+        val codes = codes()
+        val events = count("tb_registration_outbox WHERE event_type = 'REGISTERED'")
+        val createdEvents = count("tb_registration_outbox WHERE event_type = 'STANDARD_CREATED'")
+
+        repeat(3) { tries ->
+            val body = bodyOf(register(ALICE, BOB), 200)
+
+            // 응답 모양은 그대로다: 문자 대상 목록은 대표자와 기존 일행이고 일행 전체도 같다
+            longs(body, "participantIds") shouldBe ids
+            longs(body, "groupParticipantIds") shouldBe ids
+            body.contains("\"code\"") shouldBe false
+            count("tb_standard_participant") shouldBe 2
+            codes() shouldBe codes
+            count("tb_registration_outbox WHERE event_type = 'REGISTERED'") shouldBe events
+            count("tb_registration_outbox WHERE event_type = 'STANDARD_CREATED'") shouldBe createdEvents
+            if (tries < 2) smsTry()
+        }
+    }
+
+    @Test
+    fun `문자를 두 번 보낸 뒤에도 새 동행자가 있으면 그 동행자만 문자 대상이다`() {
         register(ALICE, BOB).andExpect(status().isCreated)
         repeat(2) { smsTry() }
 
-        // 이미 있는 사람만 다시 보내는 재신청(QR 재발송)은 반복 발송을 막으려고 기존처럼 거부한다.
-        register(ALICE, BOB).andExpect(status().isConflict)
+        val body = bodyOf(register(ALICE, BOB, CAROL), 201)
 
-        count("tb_standard_participant") shouldBe 2
+        val carol = idsOf(CAROL)
+        longs(body, "participantIds") shouldBe carol
+        longs(body, "groupParticipantIds") shouldBe allIds()
+        val events = registeredParticipants()
+        events.size shouldBe 2
+        events.last().map { it.path("id").asLong() } shouldBe carol
+    }
+
+    @Test
+    fun `문자를 두 번 보낸 대표자의 같은 requestId 재시도는 처음 응답을 돌려주고 이벤트를 만들지 않는다`() {
+        register(ALICE, BOB).andExpect(status().isCreated)
+        repeat(2) { smsTry() }
+        val requestId = UUID.randomUUID().toString()
+        val first = bodyOf(register(ALICE, BOB, requestId = requestId), 200)
+        val events = count("tb_registration_outbox WHERE event_type = 'REGISTERED'")
+
+        val retry = bodyOf(register(ALICE, BOB, requestId = requestId), 200)
+
+        retry shouldBe first
+        count("tb_registration_outbox WHERE event_type = 'REGISTERED'") shouldBe events
     }
 
     @Test
@@ -356,6 +395,8 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
         representative: Person,
         vararg companions: Person,
         requestId: String? = null,
+        phone: String = PHONE,
+        released: List<Long>? = null,
     ): ResultActions {
         val answers =
             mapOf(
@@ -373,13 +414,14 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
             listOfNotNull(
                 "expoId" to EXPO,
                 "name" to representative.name,
-                "phoneNumber" to PHONE,
+                "phoneNumber" to phone,
                 "informationJson" to mapper.writeValueAsString(answers),
                 "personalInformationStatus" to true,
                 "applicationType" to "PRE",
                 "occupation" to representative.occupation,
                 "questions" to listOf(mapOf("id" to "1", "title" to "동행자", "formType" to "COMPANION")),
                 requestId?.let { "requestId" to it },
+                released?.let { "releasedParticipantIds" to it },
             ).toMap()
         return post("/internal/standard-participants", mapper.writeValueAsString(body))
     }
@@ -397,6 +439,11 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
             "/internal/participants/sms-try",
             """{"expoId":"$EXPO","participationType":"STANDARD","phoneNumber":"$PHONE","eventId":"${UUID.randomUUID()}"}""",
         )
+
+    private fun idsOf(vararg people: Person): List<Long> =
+        people.map {
+            jdbcTemplate.queryForObject("SELECT id FROM tb_standard_participant WHERE name = ?", Long::class.java, it.name)!!
+        }
 
     private fun codes() = jdbcTemplate.queryForList("SELECT code FROM tb_standard_participant ORDER BY id", String::class.java)
 
@@ -442,6 +489,7 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
     private companion object {
         const val EXPO = "0199aaaa-0000-7000-8000-0000000000c2"
         const val PHONE = "01012345678"
+        const val OTHER_PHONE = "01099998888"
         val ALICE = Person("앨리스", "TEACHER", "광주고")
         val BOB = Person("밥", "GENERAL")
         val CAROL = Person("캐롤", "GENERAL")
