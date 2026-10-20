@@ -4,6 +4,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Component
 import team.startup.expo.domain.participation.entity.ParticipationType
 import team.startup.expo.domain.participation.entity.RegistrationRequest
+import team.startup.expo.domain.participation.repository.RegistrationCancellationRepository
 import team.startup.expo.domain.participation.repository.RegistrationRequestRepository
 import team.startup.expo.global.exception.ExpectedException
 import tools.jackson.core.type.TypeReference
@@ -16,11 +17,12 @@ import java.security.MessageDigest
  *
  * 같은 키가 다른 내용으로 오면 409다. 내용은 `requestId`를 뺀 요청 본문과 응답자 구분의 해시로 비교한다.
  * 같은 키의 요청은 [ParticipantRegistrationLock]으로 직렬화하고, 삭제 중이거나 삭제된 박람회는 [ExpoDeletionGuard]로 거부한다. 첫 요청이 실패한(예외로 끝난) 키는 기록이
- * 남지 않으므로 다시 처리한다.
+ * 남지 않으므로 다시 처리한다. 다만 `registration-status`가 취소 기록을 남긴 키는 409로 거절한다.
  */
 @Component
 class RegistrationIdempotency(
     private val registrationRequestRepository: RegistrationRequestRepository,
+    private val registrationCancellationRepository: RegistrationCancellationRepository,
     private val expoDeletionGuard: ExpoDeletionGuard,
     private val registrationLock: ParticipantRegistrationLock,
     private val jsonMapper: JsonMapper,
@@ -55,6 +57,10 @@ class RegistrationIdempotency(
             return Registration(it.participantId, it.phoneNumber, it.created, participantIds, groupParticipantIds)
         }
 
+        // registration-status가 저장되지 않았다고 확정한 키는 저장하지 않는다. 요청 키 lock 안에서 확인하므로 확정 뒤에 커밋되는 저장은 없다
+        if (registrationCancellationRepository.existsById(requestId)) {
+            throw ExpectedException(HttpStatus.CONFLICT, "취소된 요청 키로 등록할 수 없습니다.")
+        }
         val registration = action()
         registrationRequestRepository.save(
             RegistrationRequest(
