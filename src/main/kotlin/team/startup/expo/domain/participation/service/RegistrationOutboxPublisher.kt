@@ -7,7 +7,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.core.NestedExceptionUtils
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import team.startup.expo.domain.participation.entity.ParticipationType
 import team.startup.expo.domain.participation.entity.RegistrationEventType
 import team.startup.expo.domain.participation.entity.RegistrationOutboxEvent
@@ -19,10 +19,16 @@ import tools.jackson.core.JacksonException
 import tools.jackson.core.type.TypeReference
 import tools.jackson.databind.json.JsonMapper
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 
 /**
  * 아직 발행하지 않은 아웃박스 이벤트를 Kafka로 보낸다. 오래된 것부터 한 건씩 보내고, 보낸 건은 바로 발행 완료로 표시한다.
+ *
+ * Kafka 응답을 기다리는 동안에는 행을 잠그지 않는다. 짧은 트랜잭션으로 이벤트를 골라 점유 기한([LEASE_SECONDS]초)을 남기고
+ * 커밋한 뒤 트랜잭션 밖에서 보내고, 다시 짧은 트랜잭션으로 결과를 남기며 점유를 푼다. 그래서 박람회 삭제의 DELETE가 발행을
+ * 기다리지 않는다. 기한 안에 끝나지 않을 전송은 시작하지 않아(남은 이벤트는 다음 회차에 보낸다) 기한이 지나 다른 릴레이가 같은
+ * 이벤트를 가져가는 일을 막고, 결과를 남기기 전에 죽은 릴레이의 이벤트는 기한이 지나면 다시 가져가 같은 `eventId`로 보낸다.
  *
  * 순서는 참가자(`participationType`, `participantId`) 단위로 지킨다. 한 건이 실패하면 시도 횟수를 올리고 이번 회차에서
  * 그 참가자의 뒤 이벤트만 건너뛰며, 다른 참가자의 이벤트는 계속 보낸다. 레코드 거부가 아닌 실패가 연달아
@@ -36,7 +42,8 @@ import java.util.concurrent.TimeUnit
  *
  * 발행 성공 응답을 받은 뒤 커밋 전에 죽으면 같은 이벤트가 다시 나간다. 같은 `eventId`로 나가므로 소비자는
  * `eventId`로 중복을 걸러야 한다. 박람회 삭제는 발행하지 않은 이벤트만 지우므로, 이미 나간 이벤트를 받은 소비자는 처리 전에
- * 참가자가 남아 있는지 확인해야 한다. 조회는 `SKIP LOCKED`라 인스턴스가 여럿이어도 같은 이벤트를 동시에 보내지 않고, 같은
+ * 참가자가 남아 있는지 확인해야 한다. 발행 중에 박람회가 삭제되면 그 이벤트는 나갈 수 있지만 결과는 남기지 않는다(지운 행을
+ * 되살리지 않는다). 조회는 점유 기한과 `SKIP LOCKED`로 인스턴스가 여럿이어도 같은 이벤트를 동시에 보내지 않고, 같은
  * 참가자의 앞선 이벤트가 발행 전이면(다른 인스턴스가 발행 중인 경우 포함) 뒤 이벤트는 조회하지 않으므로 한 회차에 참가자당
  * 한 건씩 나간다.
  */
@@ -46,17 +53,52 @@ class RegistrationOutboxPublisher(
     private val kafkaTemplate: KafkaTemplate<String, String>,
     private val jsonMapper: JsonMapper,
     private val properties: RegistrationEventProperties,
+    private val transactionTemplate: TransactionTemplate,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /** 이번 회차에 발행한 건수를 돌려준다. */
-    @Transactional
     fun publishPending(): Int {
+        // DB는 마이크로초까지 저장하므로 잘라야 결과를 남길 때 점유 기한이 같은지 비교할 수 있다
+        val now = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS)
+        val claimedUntil = now.plusSeconds(LEASE_SECONDS)
+        val events = claim(now, claimedUntil)
+        if (events.isEmpty()) return 0
+        val published = sendAll(events, claimedUntil.minusSeconds(MAX_SEND_SECONDS))
+        transactionTemplate.executeWithoutResult {
+            events.forEach {
+                registrationOutboxEventRepository.release(
+                    it.id!!,
+                    claimedUntil,
+                    it.publishedAt,
+                    it.attempts,
+                    it.lastError,
+                    it.quarantinedAt,
+                )
+            }
+        }
+        return published
+    }
+
+    private fun claim(
+        now: LocalDateTime,
+        claimedUntil: LocalDateTime,
+    ): List<RegistrationOutboxEvent> =
+        transactionTemplate.execute {
+            registrationOutboxEventRepository.findPendingForUpdate(BATCH_SIZE, now).onEach { it.claimedUntil = claimedUntil }
+        }!!
+
+    /** 점유한 이벤트를 트랜잭션 밖에서 보내고 결과를 [events]에 적는다. [sendDeadline]이 지나면 새 전송을 시작하지 않는다. */
+    private fun sendAll(
+        events: List<RegistrationOutboxEvent>,
+        sendDeadline: LocalDateTime,
+    ): Int {
         var published = 0
         var failuresInRow = 0
         val blocked = mutableSetOf<Pair<ParticipationType, Long>>()
         val failed = mutableListOf<RegistrationOutboxEvent>()
-        for (event in registrationOutboxEventRepository.findPendingForUpdate(BATCH_SIZE)) {
+        for (event in events) {
+            if (LocalDateTime.now().isAfter(sendDeadline)) break
             val participant = event.participationType to event.participantId
             if (participant in blocked) continue
             try {
@@ -150,6 +192,12 @@ class RegistrationOutboxPublisher(
     private companion object {
         const val BATCH_SIZE = 50
         const val SEND_TIMEOUT_SECONDS = 10L
+
+        // 한 건 전송이 걸릴 수 있는 최대 시간. 프로듀서가 메타데이터를 기다리는 max.block.ms(기본 60초)와 응답 대기를 더했다
+        const val MAX_SEND_SECONDS = 60L + SEND_TIMEOUT_SECONDS
+
+        // 한 회차는 (기한 - MAX_SEND_SECONDS) 동안만 새 전송을 시작하고 남은 이벤트는 다음 회차로 미룬다. 처리량이 모자라면 늘린다
+        const val LEASE_SECONDS = 120L
         const val MAX_ATTEMPTS = 5
         const val MAX_FAILURES_IN_ROW = 2
         const val MAX_ERROR_LENGTH = 1000

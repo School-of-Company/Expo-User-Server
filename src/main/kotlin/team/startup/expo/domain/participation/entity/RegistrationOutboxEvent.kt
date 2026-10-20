@@ -49,4 +49,7 @@ class RegistrationOutboxEvent(
     var quarantinedAt: LocalDateTime? = null,
     @field:Column(name = "last_error")
     var lastError: String? = null,
+    // 릴레이가 Kafka로 보내는 동안 다른 릴레이가 가져가지 않도록 점유한 기한
+    @field:Column(name = "claimed_until")
+    var claimedUntil: LocalDateTime? = null,
 )
