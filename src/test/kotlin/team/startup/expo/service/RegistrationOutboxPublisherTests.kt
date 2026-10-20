@@ -5,11 +5,14 @@ import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.mockk.verifyOrder
 import org.apache.kafka.common.errors.RecordTooLargeException
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.support.SendResult
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import team.startup.expo.domain.participation.entity.ParticipationType
 import team.startup.expo.domain.participation.entity.RegistrationEventType
 import team.startup.expo.domain.participation.entity.RegistrationOutboxEvent
@@ -17,6 +20,7 @@ import team.startup.expo.domain.participation.repository.RegistrationOutboxEvent
 import team.startup.expo.domain.participation.service.RegistrationOutboxPublisher
 import team.startup.expo.global.kafka.RegistrationEventProperties
 import tools.jackson.databind.json.JsonMapper
+import java.time.LocalDateTime
 import java.util.concurrent.CompletableFuture
 
 class RegistrationOutboxPublisherTests :
@@ -30,6 +34,7 @@ class RegistrationOutboxPublisherTests :
                 kafkaTemplate,
                 jsonMapper,
                 RegistrationEventProperties(registeredTopic = REGISTERED_TOPIC, standardCreatedTopic = STANDARD_CREATED_TOPIC),
+                TransactionTemplate(mockk<PlatformTransactionManager>(relaxed = true)),
             )
 
         fun event(
@@ -38,6 +43,7 @@ class RegistrationOutboxPublisherTests :
             type: RegistrationEventType = RegistrationEventType.STANDARD_CREATED,
             participantsJson: String? = null,
         ) = RegistrationOutboxEvent(
+            id = eventId.removePrefix("e").toLong(),
             eventId = eventId,
             eventType = type,
             expoId = EXPO,
@@ -55,6 +61,7 @@ class RegistrationOutboxPublisherTests :
 
         fun reset() {
             clearMocks(repository, kafkaTemplate)
+            every { repository.release(any(), any(), any(), any(), any(), any()) } returns 1
         }
 
         given("서로 다른 참가자의 이벤트 세 건이 있을 때") {
@@ -63,7 +70,7 @@ class RegistrationOutboxPublisherTests :
                 val first = event("e1", 1L)
                 val second = event("e2", 2L)
                 val third = event("e3", 3L)
-                every { repository.findPendingForUpdate(any()) } returns listOf(first, second, third)
+                every { repository.findPendingForUpdate(any(), any()) } returns listOf(first, second, third)
                 every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:1", any()) } returns sent
                 every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:2", any()) } returns failure()
                 every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:3", any()) } returns sent
@@ -81,6 +88,13 @@ class RegistrationOutboxPublisherTests :
                     (first.publishedAt != null && third.publishedAt != null) shouldBe true
                     third.attempts shouldBe 0
                 }
+                then("점유한 기한으로 세 건의 결과를 모두 남긴다") {
+                    val claimedUntil = slot<LocalDateTime>()
+                    verify { repository.release(1L, capture(claimedUntil), first.publishedAt, 0, null, null) }
+                    verify { repository.release(2L, claimedUntil.captured, null, 1, second.lastError, null) }
+                    verify { repository.release(3L, claimedUntil.captured, third.publishedAt, 0, null, null) }
+                    first.claimedUntil shouldBe claimedUntil.captured
+                }
             }
 
             `when`("모든 발행이 실패하면") {
@@ -88,7 +102,7 @@ class RegistrationOutboxPublisherTests :
                 val first = event("e1", 1L).apply { attempts = 4 }
                 val second = event("e2", 2L).apply { attempts = 4 }
                 val third = event("e3", 3L)
-                every { repository.findPendingForUpdate(any()) } returns listOf(first, second, third)
+                every { repository.findPendingForUpdate(any(), any()) } returns listOf(first, second, third)
                 every { kafkaTemplate.send(any<String>(), any<String>(), any()) } returns failure()
 
                 val published = publisher.publishPending()
@@ -113,7 +127,7 @@ class RegistrationOutboxPublisherTests :
                 val first = event("e1", 1L, RegistrationEventType.REGISTERED)
                 val sameParticipant = event("e2", 1L)
                 val other = event("e3", 2L)
-                every { repository.findPendingForUpdate(any()) } returns listOf(first, sameParticipant, other)
+                every { repository.findPendingForUpdate(any(), any()) } returns listOf(first, sameParticipant, other)
                 every { kafkaTemplate.send(REGISTERED_TOPIC, "STANDARD:1", any()) } returns failure()
                 every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:2", any()) } returns sent
 
@@ -136,7 +150,7 @@ class RegistrationOutboxPublisherTests :
                 reset()
                 val failing = event("e1", 1L).apply { attempts = 4 }
                 val other = event("e2", 2L)
-                every { repository.findPendingForUpdate(any()) } returns listOf(failing, other)
+                every { repository.findPendingForUpdate(any(), any()) } returns listOf(failing, other)
                 every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:1", any()) } returns failure()
                 every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:2", any()) } returns sent
 
@@ -158,7 +172,7 @@ class RegistrationOutboxPublisherTests :
                 val secondRejected = event("e2", 2L)
                 val normal = event("e3", 3L)
                 val events = listOf(firstRejected, secondRejected, normal)
-                every { repository.findPendingForUpdate(any()) } answers {
+                every { repository.findPendingForUpdate(any(), any()) } answers {
                     events.filter { it.publishedAt == null && it.quarantinedAt == null }
                 }
                 every { kafkaTemplate.send(STANDARD_CREATED_TOPIC, "$EXPO:1", any()) } answers { rejected() }
@@ -190,7 +204,7 @@ class RegistrationOutboxPublisherTests :
                 reset()
                 val broken = event("e1", 1L, RegistrationEventType.REGISTERED, participantsJson = "{not json")
                 val other = event("e2", 2L)
-                every { repository.findPendingForUpdate(any()) } returns listOf(broken, other)
+                every { repository.findPendingForUpdate(any(), any()) } returns listOf(broken, other)
                 every { kafkaTemplate.send(any<String>(), any<String>(), any()) } returns sent
 
                 publisher.publishPending() shouldBe 1
@@ -214,7 +228,7 @@ class RegistrationOutboxPublisherTests :
             `when`("이번에는 발행이 성공하면") {
                 reset()
                 second.attempts = 1
-                every { repository.findPendingForUpdate(any()) } returns listOf(second, third)
+                every { repository.findPendingForUpdate(any(), any()) } returns listOf(second, third)
                 every { kafkaTemplate.send(any<String>(), any<String>(), any()) } returns sent
 
                 val published = publisher.publishPending()
@@ -234,11 +248,12 @@ class RegistrationOutboxPublisherTests :
         given("발행할 이벤트가 없을 때") {
             `when`("발행하면") {
                 reset()
-                every { repository.findPendingForUpdate(any()) } returns emptyList()
+                every { repository.findPendingForUpdate(any(), any()) } returns emptyList()
 
                 then("0건이고 Kafka를 부르지 않는다") {
                     publisher.publishPending() shouldBe 0
                     verify(exactly = 0) { kafkaTemplate.send(any<String>(), any<String>(), any()) }
+                    verify(exactly = 0) { repository.release(any(), any(), any(), any(), any(), any()) }
                 }
             }
         }
@@ -250,7 +265,7 @@ class RegistrationOutboxPublisherTests :
                     event("e1", 10L, RegistrationEventType.REGISTERED, participantsJson = """[{"id":10,"code":"abcdefghijklmnopqrstuv"}]""")
                 val created = event("e2", 11L)
                 val messages = mutableMapOf<String, String>()
-                every { repository.findPendingForUpdate(any()) } returns listOf(registered, created)
+                every { repository.findPendingForUpdate(any(), any()) } returns listOf(registered, created)
                 every { kafkaTemplate.send(any<String>(), any<String>(), any<String>()) } answers {
                     messages["${firstArg<String>()}|${secondArg<String>()}"] = thirdArg()
                     sent

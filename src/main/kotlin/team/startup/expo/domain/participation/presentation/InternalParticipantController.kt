@@ -18,6 +18,7 @@ import team.startup.expo.domain.participation.presentation.dto.request.GetAdminC
 import team.startup.expo.domain.participation.presentation.dto.request.GetCancellationStatusReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.GetManagedParticipantsReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.GetParticipantQrReqDto
+import team.startup.expo.domain.participation.presentation.dto.request.GetRegistrationStatusReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.GetStandardParticipantNamesReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.IncreaseSmsTryTimeReqDto
 import team.startup.expo.domain.participation.presentation.dto.request.RecordEntryReqDto
@@ -34,6 +35,7 @@ import team.startup.expo.domain.participation.presentation.dto.response.GetSurve
 import team.startup.expo.domain.participation.presentation.dto.response.ManagedParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ParticipantQrResDto
 import team.startup.expo.domain.participation.presentation.dto.response.RecordEntryResDto
+import team.startup.expo.domain.participation.presentation.dto.response.RegistrationStatusResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveStandardParticipantResDto
 import team.startup.expo.domain.participation.presentation.dto.response.ResolveTraineeByParticipantResDto
@@ -42,6 +44,7 @@ import team.startup.expo.domain.participation.service.GetAdminCancellationStatus
 import team.startup.expo.domain.participation.service.GetCancellationStatusService
 import team.startup.expo.domain.participation.service.GetManagedParticipantsService
 import team.startup.expo.domain.participation.service.GetParticipantQrService
+import team.startup.expo.domain.participation.service.GetRegistrationStatusService
 import team.startup.expo.domain.participation.service.GetStandardParticipantNamesService
 import team.startup.expo.domain.participation.service.GetSurveyAnswerEventService
 import team.startup.expo.domain.participation.service.IncreaseSmsTryTimeService
@@ -76,6 +79,7 @@ class InternalParticipantController(
     private val getParticipantQrService: GetParticipantQrService,
     private val getCancellationStatusService: GetCancellationStatusService,
     private val getAdminCancellationStatusService: GetAdminCancellationStatusService,
+    private val getRegistrationStatusService: GetRegistrationStatusService,
 ) {
     @Operation(summary = "일반 참가자 id 조회", description = "박람회 id와 전화번호로 일반 참가자 id를 찾습니다. 없으면 404입니다.")
     @PostMapping("/standard-participants/resolve")
@@ -118,6 +122,7 @@ class InternalParticipantController(
         description =
             "새로 만들면 201, 같은 번호가 이미 있으면 기존 참가자로 200입니다. 새 동행자 없는 재신청은 발송 횟수와 무관하게 200이며 " +
                 "기존 QR을 쓰고 문자 이벤트를 만들지 않습니다. 누적 5명(대표자 포함)을 넘으면 409이며, releasedParticipantIds로 보낸 취소된 동행자는 이 인원에서 뺍니다. " +
+                "replaceRepresentative가 true이고 대표자가 있으면 대표자를 이번 신청으로 바꾸고 일행 전체에 문자를 보냅니다. " +
                 "같은 requestId의 재시도는 처음의 결과를 그대로 돌려주고, 다른 내용에 쓰면 409입니다.",
     )
     @PostMapping("/standard-participants")
@@ -127,6 +132,18 @@ class InternalParticipantController(
         val result = registerStandardParticipantService.execute(reqDto)
         return ResponseEntity.status(if (result.created) HttpStatus.CREATED else HttpStatus.OK).body(result)
     }
+
+    @Operation(
+        summary = "등록 요청 저장 여부 확정",
+        description =
+            "requestId의 등록이 저장됐는지 확정해 답합니다. 저장됐으면 SAVED와 대표자 participantId, 아니면 NOT_SAVED이며 " +
+                "이 경우 그 requestId를 취소 기록으로 남겨 이후 같은 키의 등록은 저장하지 않고 409로 거절합니다(쓰기 성격이라 되돌릴 수 없습니다). " +
+                "진행 중인 같은 키의 등록이 끝난 뒤에 답합니다. 삭제 중인 박람회이거나 requestId가 다른 박람회에 쓰였으면 409입니다.",
+    )
+    @PostMapping("/standard-participants/registration-status")
+    fun getRegistrationStatus(
+        @Valid @RequestBody reqDto: GetRegistrationStatusReqDto,
+    ): RegistrationStatusResDto = getRegistrationStatusService.execute(reqDto)
 
     @Operation(
         summary = "QR 문자 발송 횟수 증가",

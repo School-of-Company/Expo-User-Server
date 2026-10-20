@@ -33,6 +33,8 @@ import java.time.LocalDateTime
  *
  * 같은 번호(숫자 기준)의 요청은 [ParticipantRegistrationLock]으로 직렬화해서, 확인과 저장 사이에 다른 요청이 끼어
  * 표기만 다른 같은 번호의 행이 둘 생기는 것을 막는다. 유일 제약은 마지막 안전망이라, 걸리면 409로 바꾼다.
+ *
+ * 요청의 `replaceRepresentative`가 true이고 대표자가 있으면 재신청 대신 대표자를 교체한다([replace]).
  */
 @Service
 class CreateStandardParticipantServiceImpl(
@@ -57,6 +59,7 @@ class CreateStandardParticipantServiceImpl(
                     it.phoneNumber
                 }
         if (existing == null) return registerNew(reqDto, companions)
+        if (reqDto.replaceRepresentative == true) return replace(reqDto, existing, companions)
 
         return registerAgain(reqDto, existing, companions)
     }
@@ -119,6 +122,43 @@ class CreateStandardParticipantServiceImpl(
             participants = texted.map { RegisteredParticipant(it.id!!, it.code) },
             // 새 동행자가 없으면 기존 QR을 그대로 쓰므로 문자를 보내지 않는다. `participantIds`는 그대로 이번 일행을 담는다
             smsSkipped = created.isEmpty(),
+        )
+    }
+
+    /**
+     * 대표자의 신청이 모두 취소된 뒤의 새 신청이다. 대표자 행(`id`·`code`)은 그대로 두고 신청 정보만 이번 요청으로 바꾸며,
+     * 기존 동행자는 모두 `released`로 표시한다. 요청의 동행자 중 같은 키의 기존 동행자는 되살리고 나머지는 새로 만든다.
+     * 일행은 요청 인원뿐이라 한도는 위의 요청 인원 확인으로 충분하다. 문자는 이번 일행 전체에 보낸다.
+     */
+    private fun replace(
+        reqDto: CreateStandardParticipantReqDto,
+        representative: StandardParticipant,
+        companions: List<CompanionInfo>,
+    ): CreateStandardParticipantResDto {
+        representative.replace(
+            name = reqDto.name,
+            applicationType = reqDto.applicationType,
+            occupation = reqDto.occupation,
+            school = reqDto.school,
+            region = reqDto.region,
+            informationJson = reqDto.informationJson,
+            informationFormId = reqDto.formId,
+            informationQuestions = QuestionSnapshot.serialize(reqDto.questions),
+        )
+        val registered = standardParticipantRepository.findAllByRepresentativeIdOrderById(representative.id!!)
+        val requested = companions.map { it.key }.toSet()
+        registered.forEach { it.changeReleased(listOf(it.name, it.occupation, it.school) !in requested) }
+        val known = registered.map { listOf(it.name, it.occupation, it.school) }.toSet()
+        val created = companions.filter { it.key !in known }.map { save(newCompanion(reqDto, representative.id!!, it)) }
+        val group = listOf(representative) + registered.filterNot { it.released } + created
+        return CreateStandardParticipantResDto(
+            participantId = representative.id!!,
+            phoneNumber = representative.phoneNumber!!,
+            created = created.isNotEmpty(),
+            participantIds = group.map { it.id!! },
+            groupParticipantIds = group.map { it.id!! },
+            createdIds = created.map { it.id!! },
+            participants = group.map { RegisteredParticipant(it.id!!, it.code) },
         )
     }
 

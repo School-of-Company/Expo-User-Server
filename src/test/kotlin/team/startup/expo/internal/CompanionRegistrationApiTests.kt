@@ -13,6 +13,9 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import team.startup.expo.support.IntegrationTestSupport
 import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /** 동행자를 개별 참가자로 등록하고, 문자에 담을 참가자 목록과 입장 기록(`participantId` + `code`)을 확인한다. */
 class CompanionRegistrationApiTests : IntegrationTestSupport() {
@@ -327,6 +330,100 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `대표자 교체 재등록은 기존 대표자 행을 이번 요청으로 갱신하고 일행 전체에 문자를 보낸다`() {
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+        val (alice, bob, carol) = allIds()
+        val code = codes().first()
+        val events = count("tb_registration_outbox WHERE event_type = 'REGISTERED'")
+
+        val body = bodyOf(register(HONG, replace = true, applicationType = "FIELD", formId = "form-2", region = "JEONNAM"), 200)
+
+        val row = representativeRow()
+        row["id"] shouldBe alice
+        row["name"] shouldBe HONG.name
+        row["occupation"] shouldBe HONG.occupation
+        row["school"] shouldBe HONG.school
+        row["region"] shouldBe "JEONNAM"
+        row["application_type"] shouldBe "FIELD"
+        row["information_form_id"] shouldBe "form-2"
+        mapper.readTree(row["information_json"].toString()).path("동행자").size() shouldBe 0
+        mapper.readTree(row["information_questions"].toString()).size() shouldBe 1
+        row["code"] shouldBe code
+        longs(body, "participantIds") shouldBe listOf(alice)
+        longs(body, "groupParticipantIds") shouldBe listOf(alice)
+        managedIds() shouldBe listOf(alice)
+        jdbcTemplate.queryForList("SELECT id FROM tb_standard_participant WHERE released ORDER BY id", Long::class.java) shouldBe
+            listOf(bob, carol)
+        count("tb_registration_outbox WHERE event_type = 'REGISTERED'") shouldBe events!! + 1
+        registeredParticipants().last().map { it.path("code").asString() } shouldBe listOf(code)
+    }
+
+    @Test
+    fun `대표자 교체 재등록은 요청 동행자를 새로 만들고 같은 키의 기존 동행자는 되살린다`() {
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+        val (alice, bob, _) = allIds()
+
+        val body = bodyOf(register(HONG, BOB, DAVE, replace = true), 201)
+
+        val dave = idsOf(DAVE).single()
+        longs(body, "participantIds") shouldBe listOf(alice, bob, dave)
+        longs(body, "groupParticipantIds") shouldBe listOf(alice, bob, dave)
+        managedIds() shouldBe listOf(alice, bob, dave)
+        registeredParticipants().last().map { it.path("id").asLong() } shouldBe listOf(alice, bob, dave)
+        count("tb_registration_outbox WHERE event_type = 'STANDARD_CREATED'") shouldBe 4
+    }
+
+    @Test
+    fun `대표자 교체 표시는 대표자가 없으면 무시하고 새로 만든다`() {
+        register(ALICE, BOB, replace = true).andExpect(status().isCreated)
+
+        allIds().size shouldBe 2
+        representativeRow()["name"] shouldBe ALICE.name
+    }
+
+    @Test
+    fun `대표자 교체 재등록의 같은 requestId 재시도는 처음 응답을 돌려주고 이벤트를 다시 만들지 않는다`() {
+        register(ALICE, BOB).andExpect(status().isCreated)
+        val requestId = UUID.randomUUID().toString()
+        val first = bodyOf(register(HONG, DAVE, requestId = requestId, replace = true), 201)
+        val events = count("tb_registration_outbox")
+
+        val retry = bodyOf(register(HONG, DAVE, requestId = requestId, replace = true), 201)
+
+        retry shouldBe first
+        count("tb_registration_outbox") shouldBe events
+        count("tb_standard_participant") shouldBe 3
+        // 표시가 다르면 다른 내용이다
+        register(HONG, DAVE, requestId = requestId).andExpect(status().isConflict)
+    }
+
+    @Test
+    fun `같은 번호의 대표자 교체 재등록을 동시에 보내도 동행자는 한 번만 만든다`() {
+        register(ALICE, BOB).andExpect(status().isCreated)
+        val executor = Executors.newFixedThreadPool(THREADS)
+        val start = CountDownLatch(1)
+        val statuses =
+            try {
+                List(THREADS) {
+                    executor.submit<Int> {
+                        start.await()
+                        register(HONG, CAROL, replace = true).andReturn().response.status
+                    }
+                }.also { start.countDown() }
+                    .map { it.get(30, TimeUnit.SECONDS) }
+            } finally {
+                executor.shutdownNow()
+            }
+
+        statuses.count { it == 201 } shouldBe 1
+        statuses.count { it == 200 } shouldBe THREADS - 1
+        idsOf(CAROL).size shouldBe 1
+        count("tb_standard_participant") shouldBe 3
+        representativeRow()["name"] shouldBe HONG.name
+        managedIds() shouldBe listOf(allIds().first(), idsOf(CAROL).single())
+    }
+
+    @Test
     fun `일행 전체 목록에도 code를 싣지 않는다`() {
         val response =
             register(ALICE, BOB)
@@ -510,6 +607,10 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
         requestId: String? = null,
         phone: String = PHONE,
         released: List<Long>? = null,
+        replace: Boolean? = null,
+        applicationType: String = "PRE",
+        formId: String? = null,
+        region: String? = null,
     ): ResultActions {
         val answers =
             mapOf(
@@ -530,14 +631,20 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
                 "phoneNumber" to phone,
                 "informationJson" to mapper.writeValueAsString(answers),
                 "personalInformationStatus" to true,
-                "applicationType" to "PRE",
+                "applicationType" to applicationType,
                 "occupation" to representative.occupation,
+                representative.school?.let { "school" to it },
+                formId?.let { "formId" to it },
+                region?.let { "region" to it },
                 "questions" to listOf(mapOf("id" to "1", "title" to "동행자", "formType" to "COMPANION")),
                 requestId?.let { "requestId" to it },
                 released?.let { "releasedParticipantIds" to it },
+                replace?.let { "replaceRepresentative" to it },
             ).toMap()
         return post("/internal/standard-participants", mapper.writeValueAsString(body))
     }
+
+    private fun representativeRow() = jdbcTemplate.queryForMap("SELECT * FROM tb_standard_participant WHERE representative_id IS NULL")
 
     private fun enter(
         participantId: Long,
@@ -617,5 +724,7 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
         val DAVE = Person("데이브", "GENERAL")
         val EVE = Person("이브", "GENERAL")
         val FRANK = Person("프랭크", "GENERAL")
+        val HONG = Person("홍", "PRE_SERVICE_TEACHER", "광주교대")
+        const val THREADS = 8
     }
 }
