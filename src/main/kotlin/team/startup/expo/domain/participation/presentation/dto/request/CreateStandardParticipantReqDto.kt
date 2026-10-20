@@ -51,4 +51,14 @@ data class CreateStandardParticipantReqDto(
         nullable = true,
     )
     val releasedParticipantIds: List<Long>? = null,
+    // 없을 때는 싣지 않아 이 필드가 생기기 전 요청의 fingerprint를 유지한다
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
+    @field:Schema(
+        description =
+            "true면 이 번호의 기존 대표자를 이번 신청으로 바꾼다. 대표자 행의 이름·구분·소속·지역·답변을 이번 요청 값으로 갱신하고(`code`는 그대로), " +
+                "기존 동행자는 모두 취소로 표시하며, 요청의 동행자로 일행을 다시 만든다(같은 사람은 되살린다). 문자는 이번 일행 전체에 보낸다. " +
+                "대표자가 없으면 무시한다. 없거나 false면 기존 동작과 같다.",
+        nullable = true,
+    )
+    val replaceRepresentative: Boolean? = null,
 )

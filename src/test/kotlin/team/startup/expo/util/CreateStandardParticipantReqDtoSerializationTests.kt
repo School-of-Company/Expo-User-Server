@@ -43,4 +43,10 @@ class CreateStandardParticipantReqDtoSerializationTests {
             ).contains(""""releasedParticipantIds":[1,2]""") shouldBe
             true
     }
+
+    @Test
+    fun `replaceRepresentative가 없으면 직렬화에 싣지 않고 있으면 싣는다`() {
+        mapper.writeValueAsString(dto(null)).contains("replaceRepresentative") shouldBe false
+        mapper.writeValueAsString(dto(null).copy(replaceRepresentative = true)).contains(""""replaceRepresentative":true""") shouldBe true
+    }
 }
