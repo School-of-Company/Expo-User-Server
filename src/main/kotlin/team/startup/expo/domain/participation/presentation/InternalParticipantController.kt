@@ -122,6 +122,7 @@ class InternalParticipantController(
         description =
             "새로 만들면 201, 같은 번호가 이미 있으면 기존 참가자로 200입니다. 새 동행자 없는 재신청은 발송 횟수와 무관하게 200이며 " +
                 "기존 QR을 쓰고 문자 이벤트를 만들지 않습니다. 누적 5명(대표자 포함)을 넘으면 409이며, releasedParticipantIds로 보낸 취소된 동행자는 이 인원에서 뺍니다. " +
+                "replaceRepresentative가 true이고 대표자가 있으면 대표자를 이번 신청으로 바꾸고 일행 전체에 문자를 보냅니다. " +
                 "같은 requestId의 재시도는 처음의 결과를 그대로 돌려주고, 다른 내용에 쓰면 409입니다.",
     )
     @PostMapping("/standard-participants")
