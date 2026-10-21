@@ -180,6 +180,37 @@ class ParticipantQueryTests : QueryApiTestSupport() {
     }
 
     @Test
+    fun `withoutSession이면 그날 회차 없이 입장한 참가자만 돌려준다`() {
+        val walkIn = saveParticipant(EXPO_A, "현장", "01055556666")
+        val both = saveParticipant(EXPO_A, "둘다", "01011112222")
+        val session = saveParticipant(EXPO_A, "회차", "01033334444")
+        val yesterday = saveParticipant(EXPO_A, "어제", "01077778888")
+        attend(walkIn, TODAY)
+        attend(both, TODAY)
+        attend(both, TODAY, SESSION_1)
+        attend(session, TODAY, SESSION_1)
+        attend(yesterday, TODAY.minusDays(1))
+
+        fetch(EXPO_A, "withoutSession" to "true")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.info.totalElement").value(2))
+            .andExpect(jsonPath("$.participants[0].id").value(walkIn.id))
+            .andExpect(jsonPath("$.participants[1].id").value(both.id))
+        fetch(EXPO_A, "withoutSession" to "true", "date" to TODAY.minusDays(1).toString())
+            .andExpect(jsonPath("$.info.totalElement").value(1))
+            .andExpect(jsonPath("$.participants[0].id").value(yesterday.id))
+        fetch(EXPO_A, "withoutSession" to "false").andExpect(jsonPath("$.info.totalElement").value(3))
+    }
+
+    @Test
+    fun `withoutSession은 sessionId와 함께 주면 400이고 박람회 기간 밖 date도 400이다`() {
+        FakeExpoServer.registerSession(EXPO_A, SESSION_1)
+
+        fetch(EXPO_A, "withoutSession" to "true", "sessionId" to SESSION_1.toString()).andExpect(status().isBadRequest)
+        fetch(EXPO_A, "withoutSession" to "true", "date" to TODAY.plusDays(10).toString()).andExpect(status().isBadRequest)
+    }
+
+    @Test
     fun `토큰이 없으면 401이고 승인 전 관리자는 403이다`() {
         mockMvc.perform(get("/participant/$EXPO_A")).andExpect(status().isUnauthorized)
         mockMvc.perform(get("/participant/$EXPO_A").header("Authorization", bearerOf(pendingAdminId))).andExpect(status().isForbidden)

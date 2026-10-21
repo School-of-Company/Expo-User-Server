@@ -374,6 +374,60 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `사전등록자의 현장등록은 신청 구분을 FIELD로 바꾸고 등록 정보를 갱신하며 다시 신청한 일행에 문자를 보낸다`() {
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+        val (alice, bob, carol) = allIds()
+        val codes = codes()
+        val events = count("tb_registration_outbox WHERE event_type = 'REGISTERED'")
+
+        val body = bodyOf(register(HONG, BOB, applicationType = "FIELD", formId = "field-form", region = "JEONNAM"), 200)
+
+        val row = representativeRow()
+        row["id"] shouldBe alice
+        row["name"] shouldBe HONG.name
+        row["occupation"] shouldBe HONG.occupation
+        row["school"] shouldBe HONG.school
+        row["region"] shouldBe "JEONNAM"
+        row["application_type"] shouldBe "FIELD"
+        row["information_form_id"] shouldBe "field-form"
+        codes() shouldBe codes
+        // 다시 신청한 동행자만 FIELD가 되고, 다시 신청하지 않은 동행자는 그대로 일행에 남는다
+        jdbcTemplate.queryForList("SELECT application_type FROM tb_standard_participant ORDER BY id", String::class.java) shouldBe
+            listOf("FIELD", "FIELD", "PRE")
+        longs(body, "participantIds") shouldBe listOf(alice, bob)
+        longs(body, "groupParticipantIds") shouldBe listOf(alice, bob, carol)
+        count("tb_registration_outbox WHERE event_type = 'REGISTERED'") shouldBe events!! + 1
+        registeredParticipants().last().map { it.path("id").asLong() } shouldBe listOf(alice, bob)
+    }
+
+    @Test
+    fun `사전등록자의 현장등록에 새 동행자가 있으면 FIELD로 만들고 대표자와 함께 문자에 담는다`() {
+        register(ALICE).andExpect(status().isCreated)
+        val alice = allIds().single()
+
+        val body = bodyOf(register(ALICE, DAVE, applicationType = "FIELD"), 201)
+
+        val dave = idsOf(DAVE).single()
+        jdbcTemplate.queryForList("SELECT application_type FROM tb_standard_participant ORDER BY id", String::class.java) shouldBe
+            listOf("FIELD", "FIELD")
+        longs(body, "participantIds") shouldBe listOf(alice, dave)
+        registeredParticipants().last().map { it.path("id").asLong() } shouldBe listOf(alice, dave)
+    }
+
+    @Test
+    fun `현장등록자의 현장 재신청과 사전등록 요청은 신청 구분과 등록 정보를 바꾸지 않는다`() {
+        register(ALICE, applicationType = "FIELD").andExpect(status().isCreated)
+
+        register(HONG, applicationType = "FIELD").andExpect(status().isOk)
+        register(HONG).andExpect(status().isOk)
+
+        val row = representativeRow()
+        row["name"] shouldBe ALICE.name
+        row["application_type"] shouldBe "FIELD"
+        registeredParticipants().size shouldBe 1
+    }
+
+    @Test
     fun `대표자 교체 표시는 대표자가 없으면 무시하고 새로 만든다`() {
         register(ALICE, BOB, replace = true).andExpect(status().isCreated)
 
