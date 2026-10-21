@@ -85,7 +85,7 @@ class StandardParticipant(
         this.released = released
     }
 
-    // 전원 취소된 대표자의 번호로 다른 사람이 신청하면 이번 신청으로 바꾼다. 행과 `code`는 그대로다
+    // 전원 취소된 대표자의 번호로 다른 사람이 신청하거나 사전등록자가 현장등록하면 이번 신청으로 바꾼다. 행과 `code`는 그대로다
     fun replace(
         name: String,
         applicationType: ApplicationType,
