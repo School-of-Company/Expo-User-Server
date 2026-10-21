@@ -54,7 +54,10 @@ class RegistrationIdempotency(
             val groupParticipantIds =
                 it.groupParticipantIds?.let { json -> jsonMapper.readValue(json, object : TypeReference<List<Long>>() {}) }
                     ?: participantIds
-            return Registration(it.participantId, it.phoneNumber, it.created, participantIds, groupParticipantIds)
+            // 이 컬럼이 생기기 전의 행은 null 그대로 돌려줘 응답에서 뺀다. 무엇이 FIELD가 됐는지 알 수 없어서다
+            val fieldParticipantIds =
+                it.fieldParticipantIds?.let { json -> jsonMapper.readValue(json, object : TypeReference<List<Long>>() {}) }
+            return Registration(it.participantId, it.phoneNumber, it.created, participantIds, groupParticipantIds, fieldParticipantIds)
         }
 
         // registration-status가 저장되지 않았다고 확정한 키는 저장하지 않는다. 요청 키 lock 안에서 확인하므로 확정 뒤에 커밋되는 저장은 없다
@@ -73,6 +76,7 @@ class RegistrationIdempotency(
                 created = registration.created,
                 participantIds = jsonMapper.writeValueAsString(registration.participantIds),
                 groupParticipantIds = jsonMapper.writeValueAsString(registration.groupParticipantIds),
+                fieldParticipantIds = registration.fieldParticipantIds?.let { jsonMapper.writeValueAsString(it) },
             ),
         )
         return registration

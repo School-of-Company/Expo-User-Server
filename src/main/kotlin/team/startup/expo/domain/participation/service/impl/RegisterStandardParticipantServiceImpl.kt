@@ -56,6 +56,7 @@ class RegisterStandardParticipantServiceImpl(
                     created.created,
                     created.participants.map { it.id },
                     created.groupParticipantIds,
+                    created.fieldParticipantIds,
                 )
             }
         return CreateStandardParticipantResDto(
@@ -64,6 +65,7 @@ class RegisterStandardParticipantServiceImpl(
             created = registration.created,
             participantIds = registration.participantIds,
             groupParticipantIds = registration.groupParticipantIds,
+            fieldParticipantIds = registration.fieldParticipantIds,
         )
     }
 }
