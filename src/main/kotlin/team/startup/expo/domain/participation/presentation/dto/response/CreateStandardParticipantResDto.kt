@@ -1,6 +1,7 @@
 package team.startup.expo.domain.participation.presentation.dto.response
 
 import com.fasterxml.jackson.annotation.JsonIgnore
+import com.fasterxml.jackson.annotation.JsonInclude
 import team.startup.expo.domain.participation.service.RegisteredParticipant
 
 /**
@@ -25,4 +26,8 @@ data class CreateStandardParticipantResDto(
     // 새 동행자 없는 재신청이라 등록 완료 이벤트(문자)를 만들지 않는다. 이벤트를 만드는 데만 쓰며 본문에는 싣지 않는다
     @get:JsonIgnore
     val smsSkipped: Boolean = false,
+    // 이번 요청으로 신청 구분이 FIELD가 된 참가자 ID. 신청 서비스가 이들마다 입장 서비스에 현장등록을 알린다. 이 값을 보관하기 전에
+    // 저장된 요청 키의 재시도는 값이 없어 싣지 않으며, 신청 서비스는 그때 예전처럼 대표자만 알린다
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
+    val fieldParticipantIds: List<Long>? = emptyList(),
 )

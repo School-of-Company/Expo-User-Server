@@ -42,6 +42,9 @@ import java.time.LocalDateTime
  * FIELD로 바꾼다. 문자는 새 동행자가 없어도 보내며, 대상은 대표자·다시 신청한 동행자·새 동행자다.
  *
  * 대표자가 이미 FIELD여도 FIELD 요청에 다시 담긴 PRE 동행자는 FIELD로 바꾼다(#195). 이때 문자 대상은 이번에 FIELD가 된 동행자와 새 동행자다.
+ *
+ * 응답의 `fieldParticipantIds`는 이번 요청으로 FIELD가 된 참가자다. 신청 서비스가 이들마다 입장 서비스에 현장등록을 알린다(Application #275).
+ * FIELD 요청이 아니거나 바뀐 사람이 없으면 비어 있다.
  */
 @Service
 class CreateStandardParticipantServiceImpl(
@@ -85,6 +88,7 @@ class CreateStandardParticipantServiceImpl(
             groupParticipantIds = saved.map { it.id!! },
             createdIds = saved.map { it.id!! },
             participants = saved.map { RegisteredParticipant(it.id!!, it.code) },
+            fieldParticipantIds = if (reqDto.applicationType == ApplicationType.FIELD) saved.map { it.id!! } else emptyList(),
         )
     }
 
@@ -132,6 +136,13 @@ class CreateStandardParticipantServiceImpl(
                 created.isEmpty() -> group
                 else -> created
             }
+        // 이번에 FIELD가 된 사람: 대표자 전환이면 문자 대상과 같고, 대표자가 이미 FIELD면 바뀐 동행자와 새 동행자다
+        val fieldedNow =
+            when {
+                !field -> emptyList()
+                toField -> texted
+                else -> fielded + created
+            }
         return CreateStandardParticipantResDto(
             participantId = representative.id!!,
             phoneNumber = representative.phoneNumber!!,
@@ -141,6 +152,7 @@ class CreateStandardParticipantServiceImpl(
             groupParticipantIds = group.map { it.id!! },
             createdIds = created.map { it.id!! },
             participants = texted.map { RegisteredParticipant(it.id!!, it.code) },
+            fieldParticipantIds = fieldedNow.map { it.id!! },
             // 새 동행자가 없으면 기존 QR을 그대로 쓰므로 문자를 보내지 않는다. `participantIds`는 그대로 이번 일행을 담는다.
             // FIELD 전환은 현장 입장용 QR 문자를 보낸다
             smsSkipped = created.isEmpty() && !toField && fielded.isEmpty(),
@@ -165,7 +177,7 @@ class CreateStandardParticipantServiceImpl(
 
     /**
      * 대표자의 신청이 모두 취소된 뒤의 새 신청이다. 대표자 행(`id`·`code`)은 그대로 두고 신청 정보만 이번 요청으로 바꾸며,
-     * 기존 동행자는 모두 `released`로 표시한다. 요청의 동행자 중 같은 키의 기존 동행자는 되살리고 나머지는 새로 만든다.
+     * 기존 동행자는 모두 `released`로 표시한다. 요청의 동행자 중 같은 키의 기존 동행자는 되살리고 나머지는 새로 만든다. FIELD 요청이면 되살린 동행자도 FIELD다.
      * 일행은 요청 인원뿐이라 한도는 위의 요청 인원 확인으로 충분하다. 문자는 이번 일행 전체에 보낸다.
      */
     private fun replace(
@@ -188,7 +200,11 @@ class CreateStandardParticipantServiceImpl(
         registered.forEach { it.changeReleased(listOf(it.name, it.occupation, it.school) !in requested) }
         val known = registered.map { listOf(it.name, it.occupation, it.school) }.toSet()
         val created = companions.filter { it.key !in known }.map { save(newCompanion(reqDto, representative.id!!, it)) }
-        val group = listOf(representative) + registered.filterNot { it.released } + created
+        val field = reqDto.applicationType == ApplicationType.FIELD
+        // FIELD 교체는 되살린 PRE 동행자도 FIELD로 바꾼다. 남겨 두면 신청 서비스가 현장신청 자격을 PRE로 판정한다(#195와 같은 누락)
+        val revived = registered.filterNot { it.released }
+        if (field) revived.forEach { it.applicationType = ApplicationType.FIELD }
+        val group = listOf(representative) + revived + created
         return CreateStandardParticipantResDto(
             participantId = representative.id!!,
             phoneNumber = representative.phoneNumber!!,
@@ -197,6 +213,8 @@ class CreateStandardParticipantServiceImpl(
             groupParticipantIds = group.map { it.id!! },
             createdIds = created.map { it.id!! },
             participants = group.map { RegisteredParticipant(it.id!!, it.code) },
+            // 모든 신청이 취소된 뒤의 새 신청이라 FIELD 교체는 이번 일행 전체가 새로 현장등록된 것이다
+            fieldParticipantIds = if (field) group.map { it.id!! } else emptyList(),
         )
     }
 
