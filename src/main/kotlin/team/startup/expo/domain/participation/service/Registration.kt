@@ -7,4 +7,6 @@ data class Registration(
     val created: Boolean,
     val participantIds: List<Long> = emptyList(),
     val groupParticipantIds: List<Long> = emptyList(),
+    // 일반 참가자 등록에서 이번에 FIELD가 된 참가자 ID. 연수자 등록과 이 값을 보관하기 전의 요청 기록은 null이다
+    val fieldParticipantIds: List<Long>? = null,
 )

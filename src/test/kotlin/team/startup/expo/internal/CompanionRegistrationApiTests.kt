@@ -428,6 +428,123 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `대표자만 먼저 현장등록한 뒤 기존 PRE 동행자를 다시 신청하면 그 동행자만 FIELD로 바꾸고 문자에 담는다`() {
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+        val (alice, bob, carol) = allIds()
+        val codes = codes()
+        register(HONG, applicationType = "FIELD", released = listOf(bob)).andExpect(status().isOk)
+        jdbcTemplate.queryForList("SELECT application_type FROM tb_standard_participant ORDER BY id", String::class.java) shouldBe
+            listOf("FIELD", "PRE", "PRE")
+        val events = registeredParticipants().size
+
+        val body = bodyOf(register(HONG, BOB, applicationType = "FIELD"), 200)
+
+        // 다시 신청한 BOB만 FIELD가 되고, 요청에 없는 CAROL은 PRE 그대로다. ID와 QR은 바뀌지 않는다
+        jdbcTemplate.queryForList("SELECT application_type FROM tb_standard_participant ORDER BY id", String::class.java) shouldBe
+            listOf("FIELD", "FIELD", "PRE")
+        codes() shouldBe codes
+        longs(body, "participantIds") shouldBe listOf(bob)
+        longs(body, "groupParticipantIds") shouldBe listOf(alice, bob, carol)
+        longs(body, "fieldParticipantIds") shouldBe listOf(bob)
+        registeredParticipants().size shouldBe events + 1
+        registeredParticipants().last().map { it.path("id").asLong() } shouldBe listOf(bob)
+
+        // 같은 요청을 다시 보내면 바꿀 사람이 없으므로 참가자도 문자도 새로 만들지 않는다
+        val replay = bodyOf(register(HONG, BOB, applicationType = "FIELD"), 200)
+
+        count("tb_standard_participant") shouldBe 3
+        registeredParticipants().size shouldBe events + 1
+        longs(replay, "groupParticipantIds") shouldBe listOf(alice, bob, carol)
+        mapper.readTree(replay).path("fieldParticipantIds").isArray shouldBe true
+        longs(replay, "fieldParticipantIds") shouldBe emptyList()
+    }
+
+    @Test
+    fun `현장등록자의 현장 재신청에 새 동행자가 있으면 FIELD로 만들고 그 동행자만 문자에 담는다`() {
+        register(ALICE, applicationType = "FIELD").andExpect(status().isCreated)
+        val alice = allIds().single()
+
+        val body = bodyOf(register(ALICE, DAVE, applicationType = "FIELD"), 201)
+
+        val dave = idsOf(DAVE).single()
+        jdbcTemplate.queryForList("SELECT application_type FROM tb_standard_participant ORDER BY id", String::class.java) shouldBe
+            listOf("FIELD", "FIELD")
+        longs(body, "participantIds") shouldBe listOf(dave)
+        longs(body, "groupParticipantIds") shouldBe listOf(alice, dave)
+        longs(body, "fieldParticipantIds") shouldBe listOf(dave)
+        registeredParticipants().last().map { it.path("id").asLong() } shouldBe listOf(dave)
+    }
+
+    @Test
+    fun `현장등록자의 사전등록 요청은 기존 PRE 동행자를 FIELD로 바꾸지 않는다`() {
+        register(ALICE, BOB).andExpect(status().isCreated)
+        register(ALICE, applicationType = "FIELD").andExpect(status().isOk)
+        val events = registeredParticipants().size
+
+        val body = bodyOf(register(ALICE, BOB), 200)
+
+        jdbcTemplate.queryForList("SELECT application_type FROM tb_standard_participant ORDER BY id", String::class.java) shouldBe
+            listOf("FIELD", "PRE")
+        registeredParticipants().size shouldBe events
+        longs(body, "fieldParticipantIds") shouldBe emptyList()
+    }
+
+    @Test
+    fun `처음 신청은 FIELD면 만든 전원을, PRE면 아무도 FIELD 전환 목록에 담지 않는다`() {
+        longs(bodyOf(register(ALICE, BOB), 201), "fieldParticipantIds") shouldBe emptyList()
+
+        val body = bodyOf(register(HONG, CAROL, phone = OTHER_PHONE, applicationType = "FIELD"), 201)
+
+        longs(body, "fieldParticipantIds") shouldBe idsOf(HONG, CAROL)
+    }
+
+    @Test
+    fun `사전등록 대표자의 현장 재신청은 대표자, 다시 신청한 동행자, 새 동행자를 FIELD 전환 목록에 담는다`() {
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+        val (alice, bob) = allIds()
+
+        val body = bodyOf(register(ALICE, BOB, DAVE, applicationType = "FIELD"), 201)
+
+        // 요청에 없는 CAROL은 PRE 그대로라 담지 않는다
+        longs(body, "fieldParticipantIds") shouldBe listOf(alice, bob, idsOf(DAVE).single())
+        jdbcTemplate.queryForList("SELECT application_type FROM tb_standard_participant ORDER BY id", String::class.java) shouldBe
+            listOf("FIELD", "FIELD", "PRE", "FIELD")
+    }
+
+    @Test
+    fun `대표자 교체의 FIELD 요청은 되살린 PRE 동행자도 FIELD로 바꾸고 일행 전체를 FIELD 전환 목록에 담는다`() {
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+        val (alice, bob) = allIds()
+
+        val body = bodyOf(register(HONG, BOB, DAVE, applicationType = "FIELD", replace = true), 201)
+
+        val dave = idsOf(DAVE).single()
+        longs(body, "fieldParticipantIds") shouldBe listOf(alice, bob, dave)
+        longs(body, "groupParticipantIds") shouldBe listOf(alice, bob, dave)
+        // 되살리지 않은 CAROL은 PRE 그대로다
+        jdbcTemplate.queryForList("SELECT application_type FROM tb_standard_participant ORDER BY id", String::class.java) shouldBe
+            listOf("FIELD", "FIELD", "PRE", "FIELD")
+        longs(bodyOf(register(EVE, phone = OTHER_PHONE, replace = true), 201), "fieldParticipantIds") shouldBe emptyList()
+    }
+
+    @Test
+    fun `같은 requestId의 재시도는 처음의 FIELD 전환 목록을 돌려주고, 목록을 보관하기 전의 기록이면 필드를 뺀다`() {
+        register(ALICE, BOB, CAROL).andExpect(status().isCreated)
+        val (alice, bob) = allIds()
+        val requestId = UUID.randomUUID().toString()
+        val first = bodyOf(register(ALICE, BOB, applicationType = "FIELD", requestId = requestId), 200)
+        longs(first, "fieldParticipantIds") shouldBe listOf(alice, bob)
+
+        longs(bodyOf(register(ALICE, BOB, applicationType = "FIELD", requestId = requestId), 200), "fieldParticipantIds") shouldBe
+            listOf(alice, bob)
+
+        jdbcTemplate.update("UPDATE tb_registration_request SET field_participant_ids = NULL")
+        val legacy = bodyOf(register(ALICE, BOB, applicationType = "FIELD", requestId = requestId), 200)
+        mapper.readTree(legacy).has("fieldParticipantIds") shouldBe false
+        longs(legacy, "participantIds") shouldBe longs(first, "participantIds")
+    }
+
+    @Test
     fun `대표자 교체 표시는 대표자가 없으면 무시하고 새로 만든다`() {
         register(ALICE, BOB, replace = true).andExpect(status().isCreated)
 
