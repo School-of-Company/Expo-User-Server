@@ -27,6 +27,8 @@ class GetParticipantsServiceImpl(
      *
      * `sessionId`를 주면 날짜 대신 그 사전등록 회차로 입장한 참가자를 보여 주고 `date`는 무시한다. 없는 회차나 다른 박람회의
      * 회차는 404이다. 회차 연결은 V19 이후 입장부터 남으므로 그 전 입장은 회차 목록에 나오지 않는다.
+     *
+     * `withoutSession=true`면 그 날짜에 회차 없이 입장한 참가자만 보여 준다. `sessionId`와 함께 주면 400이다.
      */
     @Transactional(readOnly = true)
     override fun execute(
@@ -37,6 +39,9 @@ class GetParticipantsServiceImpl(
             expoPeriodReader.find(expoId)
                 ?: throw ExpectedException(HttpStatus.NOT_FOUND, "박람회를 찾지 못 했습니다.")
 
+        if (reqDto.sessionId != null && reqDto.withoutSession == true) {
+            throw ExpectedException(HttpStatus.BAD_REQUEST, "sessionId와 withoutSession은 함께 줄 수 없습니다.")
+        }
         val pageable = PageRequest.of(reqDto.page ?: 0, reqDto.size ?: GetParticipantReqDto.DEFAULT_SIZE)
         val attendees =
             if (reqDto.sessionId != null) {
@@ -49,7 +54,11 @@ class GetParticipantsServiceImpl(
                 if (date !in period) {
                     throw ExpectedException(HttpStatus.BAD_REQUEST, "요청한 날짜가 박람회 기간 밖에 있습니다.")
                 }
-                participationRepository.findAttendees(expoId, date, pageable)
+                if (reqDto.withoutSession == true) {
+                    participationRepository.findSessionlessAttendees(expoId, date, pageable)
+                } else {
+                    participationRepository.findAttendees(expoId, date, pageable)
+                }
             }
         return GetParticipantResDto(
             info = ParticipantPageInfoResDto(totalPage = attendees.totalPages, totalElement = attendees.totalElements.toInt()),

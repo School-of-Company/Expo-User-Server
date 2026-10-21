@@ -11,6 +11,7 @@ import team.startup.expo.domain.participation.repository.StandardParticipantRepo
 import team.startup.expo.domain.participation.service.CreateStandardParticipantService
 import team.startup.expo.domain.participation.service.ParticipantRegistrationLock
 import team.startup.expo.domain.participation.service.RegisteredParticipant
+import team.startup.expo.domain.training.entity.ApplicationType
 import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.util.CompanionInfo
 import team.startup.expo.global.util.Companions
@@ -35,6 +36,10 @@ import java.time.LocalDateTime
  * 표기만 다른 같은 번호의 행이 둘 생기는 것을 막는다. 유일 제약은 마지막 안전망이라, 걸리면 409로 바꾼다.
  *
  * 요청의 `replaceRepresentative`가 true이고 대표자가 있으면 재신청 대신 대표자를 교체한다([replace]).
+ *
+ * 사전등록(PRE) 대표자의 번호로 현장등록(FIELD) 요청이 오면 신청 서비스가 현장등록을 허용한 재등록이다. 재신청 규칙은 그대로 두고,
+ * 대표자의 신청 구분을 FIELD로 바꾸며 등록 정보(이름·직업·소속·지역·답변)를 이번 요청 값으로 갱신한다. 이번에 다시 신청한 기존 동행자도
+ * FIELD로 바꾼다. 문자는 새 동행자가 없어도 보내며, 대상은 대표자·다시 신청한 동행자·새 동행자다.
  */
 @Service
 class CreateStandardParticipantServiceImpl(
@@ -99,6 +104,9 @@ class CreateStandardParticipantServiceImpl(
             throw ExpectedException(HttpStatus.CONFLICT, "대표자를 포함해 최대 ${Companions.MAX_PARTICIPANTS}명까지 신청할 수 있습니다.")
         }
         val created = added.map { save(newCompanion(reqDto, representative.id!!, it)) }
+        val toField = reqDto.applicationType == ApplicationType.FIELD && representative.applicationType == ApplicationType.PRE
+        val resubmitted = registered.filter { listOf(it.name, it.occupation, it.school) in requested }
+        if (toField) switchToField(reqDto, representative, resubmitted)
         // 취소된 동행자 중 다시 신청하지 않은 사람은 `released`로 표시해 `managed` 목록에서 뺀다. 다시 신청한 사람은 되돌린다.
         // 요청에 `releasedParticipantIds`가 없으면 기존 표시를 건드리지 않는다
         registered.forEach {
@@ -109,8 +117,14 @@ class CreateStandardParticipantServiceImpl(
         }
         // 이번 일행: 대표자, 표시 갱신 뒤 `released`가 아닌 기존 동행자(위 `live`와 같은 집합), 새 동행자(`id` 순서)
         val group = listOf(representative) + registered.filterNot { it.released } + created
-        // 응답의 `participantIds`: 새 동행자가 있으면 그들만(문자 대상), 없으면 이번 일행(문자는 보내지 않음). 일행의 부분집합이어야 한다
-        val texted = if (created.isEmpty()) group else created
+        // 응답의 `participantIds`: FIELD 전환이면 이번에 FIELD가 된 사람, 새 동행자가 있으면 그들만(문자 대상), 없으면 이번 일행(문자는
+        // 보내지 않음). 일행의 부분집합이어야 한다
+        val texted =
+            when {
+                toField -> listOf(representative) + resubmitted + created
+                created.isEmpty() -> group
+                else -> created
+            }
         return CreateStandardParticipantResDto(
             participantId = representative.id!!,
             phoneNumber = representative.phoneNumber!!,
@@ -120,9 +134,28 @@ class CreateStandardParticipantServiceImpl(
             groupParticipantIds = group.map { it.id!! },
             createdIds = created.map { it.id!! },
             participants = texted.map { RegisteredParticipant(it.id!!, it.code) },
-            // 새 동행자가 없으면 기존 QR을 그대로 쓰므로 문자를 보내지 않는다. `participantIds`는 그대로 이번 일행을 담는다
-            smsSkipped = created.isEmpty(),
+            // 새 동행자가 없으면 기존 QR을 그대로 쓰므로 문자를 보내지 않는다. `participantIds`는 그대로 이번 일행을 담는다.
+            // FIELD 전환은 현장 입장용 QR 문자를 보낸다
+            smsSkipped = created.isEmpty() && !toField,
         )
+    }
+
+    private fun switchToField(
+        reqDto: CreateStandardParticipantReqDto,
+        representative: StandardParticipant,
+        resubmitted: List<StandardParticipant>,
+    ) {
+        representative.replace(
+            name = reqDto.name,
+            applicationType = ApplicationType.FIELD,
+            occupation = reqDto.occupation,
+            school = reqDto.school,
+            region = reqDto.region,
+            informationJson = reqDto.informationJson,
+            informationFormId = reqDto.formId,
+            informationQuestions = QuestionSnapshot.serialize(reqDto.questions),
+        )
+        resubmitted.forEach { it.applicationType = ApplicationType.FIELD }
     }
 
     /**
