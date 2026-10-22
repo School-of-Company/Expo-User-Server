@@ -4,6 +4,8 @@ import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
 import team.startup.expo.domain.participation.entity.ParticipationType
+import java.time.LocalDate
+import java.util.UUID
 
 data class RecordEntryReqDto(
     @field:NotBlank
@@ -20,4 +22,8 @@ data class RecordEntryReqDto(
     // 일반 참가자만 받는다
     @field:Positive
     val preregisterSessionId: Long? = null,
+    val attendanceDate: LocalDate? = null,
+    val fieldVisitRegistrationId: UUID? = null,
+    @field:Positive
+    val fieldVisitGeneration: Long? = null,
 )

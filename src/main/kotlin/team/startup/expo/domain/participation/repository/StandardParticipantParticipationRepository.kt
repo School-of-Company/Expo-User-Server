@@ -13,6 +13,11 @@ interface StandardParticipantParticipationRepository : JpaRepository<StandardPar
     /** 날짜와 상관없이 그 참가자의 입장 기록이 있는지 확인한다. */
     fun existsByStandardParticipantId(standardParticipantId: Long): Boolean
 
+    fun existsByStandardParticipantIdAndAttendanceDate(
+        standardParticipantId: Long,
+        attendanceDate: LocalDate,
+    ): Boolean
+
     /**
      * 그날 입장한 참가자만 참가자 id 순서로 조회한다. 같은 날 회차 없이 한 번, 회차로 한 번 입장 기록이 생길 수 있어
      * 참가자 기준으로 한 번만 센다.
