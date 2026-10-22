@@ -173,7 +173,8 @@ class InternalParticipantController(
         summary = "대표자가 관리하는 참가자 목록",
         description =
             "행사와 검증된 전화번호의 대표자 본인과 동행자를 돌려줍니다. 이 번호로 등록된 대표자가 없으면 registered=false입니다. " +
-                "전화번호와 QR code는 싣지 않습니다.",
+                "비활성·pending도 포함하는 역사적 소유권 목록이며 활성 인원 한도와 입장·프로그램 자격을 뜻하지 않습니다. " +
+                "모두 비활성이어도 대표자가 있으면 registered=true이며 전화번호와 QR code는 싣지 않습니다.",
     )
     @PostMapping("/standard-participants/managed")
     fun getManagedParticipants(
