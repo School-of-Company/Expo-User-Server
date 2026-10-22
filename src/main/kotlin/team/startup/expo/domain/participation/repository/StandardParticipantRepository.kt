@@ -32,16 +32,6 @@ interface StandardParticipantRepository : JpaRepository<StandardParticipant, Lon
         representativeId: Long,
     ): List<ManagedParticipantView>
 
-    /** 대표자 본인과, 취소된 채 다시 신청하지 않은(`released`) 동행자를 뺀 동행자를 `id` 순서로 읽는다. */
-    @Query(
-        "select p.id as id, p.name as name, p.occupation as occupation, p.applicationType as applicationType, " +
-            "p.representativeId as representativeId from StandardParticipant p " +
-            "where p.id = :representativeId or (p.representativeId = :representativeId and p.released = false) order by p.id",
-    )
-    fun findManagedByRepresentative(
-        @Param("representativeId") representativeId: Long,
-    ): List<ManagedParticipantView>
-
     fun findByIdAndExpoId(
         id: Long,
         expoId: String,

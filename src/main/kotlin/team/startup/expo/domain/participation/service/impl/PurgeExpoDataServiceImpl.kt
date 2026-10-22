@@ -33,6 +33,8 @@ class PurgeExpoDataServiceImpl(
         jdbcTemplate.update("DELETE FROM tb_registration_request WHERE expo_id = ?", expoId)
         jdbcTemplate.update("DELETE FROM tb_registration_outbox WHERE expo_id = ?", expoId)
         jdbcTemplate.update("DELETE FROM tb_registration_cancellation WHERE expo_id = ?", expoId)
+        jdbcTemplate.update("DELETE FROM tb_field_visit_creation WHERE expo_id = ?", expoId)
+        jdbcTemplate.update("DELETE FROM tb_field_visit_operation WHERE expo_id = ?", expoId)
         // 전화 인증 집계 기록도 참가자에 딸려 있지 않아 따로 지운다
         jdbcTemplate.update("DELETE FROM tb_participant_phone_verification WHERE expo_id = ?", expoId)
         jdbcTemplate.update("UPDATE tb_expo_deletion SET completed_at = (now() AT TIME ZONE 'UTC') WHERE expo_id = ?", expoId)

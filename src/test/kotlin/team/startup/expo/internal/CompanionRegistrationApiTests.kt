@@ -276,7 +276,7 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `일행 전체를 취소하고 새 동행자로 재신청해도 managed 목록은 5명을 넘지 않는다`() {
+    fun `활성 일행은 한도를 지키고 managed는 취소된 동행자의 역사적 소유권도 보존한다`() {
         register(ALICE, BOB, CAROL, DAVE, EVE).andExpect(status().isCreated)
         val (alice, bob, carol, dave, eve) = allIds()
 
@@ -286,19 +286,19 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
         longs(body, "groupParticipantIds") shouldBe listOf(alice, frank)
         // 행과 code는 남는다
         count("tb_standard_participant") shouldBe 6
-        managedIds() shouldBe listOf(alice, frank)
+        managedIds() shouldBe listOf(alice, bob, carol, dave, eve, frank)
     }
 
     @Test
-    fun `취소됐던 동행자가 다시 신청하면 managed 목록에 돌아오고 취소 목록이 없는 재신청은 표시를 바꾸지 않는다`() {
+    fun `취소됐던 동행자는 다시 신청하기 전에도 managed 소유권 목록에 남는다`() {
         register(ALICE, BOB, CAROL).andExpect(status().isCreated)
         val (alice, bob, carol) = allIds()
 
         register(ALICE, BOB, released = listOf(bob, carol)).andExpect(status().isOk)
-        managedIds() shouldBe listOf(alice, bob)
+        managedIds() shouldBe listOf(alice, bob, carol)
 
         register(ALICE, BOB).andExpect(status().isOk)
-        managedIds() shouldBe listOf(alice, bob)
+        managedIds() shouldBe listOf(alice, bob, carol)
 
         register(ALICE, BOB, CAROL).andExpect(status().isOk)
         managedIds() shouldBe listOf(alice, bob, carol)
@@ -351,7 +351,7 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
         row["code"] shouldBe code
         longs(body, "participantIds") shouldBe listOf(alice)
         longs(body, "groupParticipantIds") shouldBe listOf(alice)
-        managedIds() shouldBe listOf(alice)
+        managedIds() shouldBe listOf(alice, bob, carol)
         jdbcTemplate.queryForList("SELECT id FROM tb_standard_participant WHERE released ORDER BY id", Long::class.java) shouldBe
             listOf(bob, carol)
         count("tb_registration_outbox WHERE event_type = 'REGISTERED'") shouldBe events!! + 1
@@ -368,7 +368,7 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
         val dave = idsOf(DAVE).single()
         longs(body, "participantIds") shouldBe listOf(alice, bob, dave)
         longs(body, "groupParticipantIds") shouldBe listOf(alice, bob, dave)
-        managedIds() shouldBe listOf(alice, bob, dave)
+        managedIds() shouldBe allIds()
         registeredParticipants().last().map { it.path("id").asLong() } shouldBe listOf(alice, bob, dave)
         count("tb_registration_outbox WHERE event_type = 'STANDARD_CREATED'") shouldBe 4
     }
@@ -591,7 +591,7 @@ class CompanionRegistrationApiTests : IntegrationTestSupport() {
         idsOf(CAROL).size shouldBe 1
         count("tb_standard_participant") shouldBe 3
         representativeRow()["name"] shouldBe HONG.name
-        managedIds() shouldBe listOf(allIds().first(), idsOf(CAROL).single())
+        managedIds() shouldBe allIds()
     }
 
     @Test

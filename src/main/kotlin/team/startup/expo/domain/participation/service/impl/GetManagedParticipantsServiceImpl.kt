@@ -12,7 +12,7 @@ import team.startup.expo.domain.participation.service.RepresentativeFinder
 /**
  * 검증된 전화번호의 대표자와 그 동행자를 `id` 순서로 돌려준다(대표자가 먼저다). 이 번호로 등록된 대표자가 없으면 오류가 아니라
  * `registered = false`로 구분해 신청 서비스가 먼저 등록하게 한다. 다른 대표자의 동행자는 섞이지 않는다.
- * 신청이 취소된 뒤 다시 신청하지 않은 동행자(`released`)는 싣지 않는다. 그 행이 남아 있어도 신청 서비스가 보는 일행은 누적 5명을 넘지 않는다.
+ * 취소 이력과 재등록 ID 선택을 위해 비활성 참가자도 보존한다. 입장·프로그램 자격과 활성 인원은 이 목록으로 판단하지 않는다.
  */
 @Service
 class GetManagedParticipantsServiceImpl(
@@ -27,7 +27,7 @@ class GetManagedParticipantsServiceImpl(
         val representativeId = requireNotNull(representative.id)
         val participants =
             standardParticipantRepository
-                .findManagedByRepresentative(representativeId)
+                .findAllByIdOrRepresentativeIdOrderById(representativeId, representativeId)
                 .map {
                     ManagedParticipantResDto(
                         it.id,

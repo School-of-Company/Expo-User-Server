@@ -7,11 +7,14 @@ import org.springframework.transaction.annotation.Transactional
 import team.startup.expo.domain.participation.entity.ParticipationType
 import team.startup.expo.domain.participation.entity.StandardParticipant
 import team.startup.expo.domain.participation.entity.StandardParticipantParticipation
+import team.startup.expo.domain.participation.presentation.dto.request.FieldVisitStatus
 import team.startup.expo.domain.participation.presentation.dto.request.RecordEntryReqDto
 import team.startup.expo.domain.participation.presentation.dto.response.RecordEntryResDto
+import team.startup.expo.domain.participation.repository.FieldVisitRepository
 import team.startup.expo.domain.participation.repository.StandardParticipantParticipationRepository
 import team.startup.expo.domain.participation.repository.StandardParticipantRepository
 import team.startup.expo.domain.participation.service.RecordEntryService
+import team.startup.expo.domain.training.entity.ApplicationType
 import team.startup.expo.domain.training.entity.Trainee
 import team.startup.expo.domain.training.entity.TraineeParticipation
 import team.startup.expo.domain.training.repository.TraineeParticipationRepository
@@ -19,7 +22,6 @@ import team.startup.expo.domain.training.repository.TraineeRepository
 import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.util.ParticipantCode
 import team.startup.expo.global.util.PhoneNumbers
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -40,18 +42,49 @@ class RecordEntryServiceImpl(
     private val standardParticipantParticipationRepository: StandardParticipantParticipationRepository,
     private val traineeRepository: TraineeRepository,
     private val traineeParticipationRepository: TraineeParticipationRepository,
+    private val fieldVisits: FieldVisitRepository,
 ) : RecordEntryService {
     @Transactional
     override fun execute(reqDto: RecordEntryReqDto): RecordEntryResDto {
         val now = LocalDateTime.now(SEOUL)
+        val field = reqDto.fieldVisitRegistrationId != null || reqDto.fieldVisitGeneration != null
+        if (field && (
+                reqDto.attendanceDate == null || reqDto.fieldVisitRegistrationId == null ||
+                    reqDto.fieldVisitGeneration == null || reqDto.fieldVisitGeneration <= 0 ||
+                    reqDto.preregisterSessionId != null || reqDto.participationType != ParticipationType.STANDARD
+            )
+        ) {
+            throw ExpectedException(
+                HttpStatus.BAD_REQUEST,
+                "FIELD 입장은 attendanceDate, fieldVisitRegistrationId, 양수 fieldVisitGeneration이 필요하며 회차와 함께 보낼 수 없습니다.",
+            )
+        }
+        val attendanceDate = reqDto.attendanceDate ?: now.toLocalDate()
         return when (reqDto.participationType) {
             ParticipationType.STANDARD -> {
                 val participant = findStandard(reqDto)
+                if (!field && reqDto.preregisterSessionId == null &&
+                    (
+                        (reqDto.attendanceDate != null && participant.applicationType == ApplicationType.FIELD) ||
+                            fieldVisits.requiresProjection(participant.id!!)
+                    )
+                ) {
+                    throw ExpectedException(HttpStatus.CONFLICT, "FIELD 참가자의 방문일 등록 권위가 필요합니다.")
+                }
+                if (field) {
+                    val visit = fieldVisits.projection(requireNotNull(reqDto.fieldVisitRegistrationId))
+                    if (visit == null || visit.expoId != reqDto.expoId || visit.participantId != participant.id ||
+                        visit.visitDate != attendanceDate || visit.generation != reqDto.fieldVisitGeneration ||
+                        visit.status != FieldVisitStatus.ACTIVE
+                    ) {
+                        throw ExpectedException(HttpStatus.CONFLICT, "유효한 방문일 등록을 확인할 수 없습니다.")
+                    }
+                }
                 record {
                     standardParticipantParticipationRepository.saveAndFlush(
                         StandardParticipantParticipation(
                             entryTime = now,
-                            attendanceDate = now.toLocalDate(),
+                            attendanceDate = attendanceDate,
                             standardParticipant = participant,
                             expoId = reqDto.expoId,
                             preregisterSessionId = reqDto.preregisterSessionId,
@@ -77,7 +110,7 @@ class RecordEntryServiceImpl(
                     traineeParticipationRepository.saveAndFlush(
                         TraineeParticipation(
                             entryTime = now,
-                            attendanceDate = now.toLocalDate(),
+                            attendanceDate = attendanceDate,
                             trainee = trainee,
                             expoId = reqDto.expoId,
                         ),
