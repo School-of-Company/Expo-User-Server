@@ -27,6 +27,15 @@ User service of the Expo MSA. Kotlin 2.3 / Spring Boot 4.1, Gradle, Java 21, Pos
 - Throw `ExpectedException(status, message)` directly; no subclasses.
 - Tests without a database (utilities, service logic) are Kotest `BehaviorSpec` (`given`/`when`/`then`) with MockK for collaborators. Tests that need the real stack extend `IntegrationTestSupport` (Testcontainers; run them in CI).
 
+## Logging
+
+The Expo log standard, shared by every Expo service (Spring and Nest alike) so the shared Loki in Expo-Monitoring can label them the same way:
+
+- Every line written to stdout is one JSON object (`logback-spring.xml`, `LogstashEncoder`) with at least `@timestamp` (ISO-8601/RFC3339), `level` (uppercase `TRACE`/`DEBUG`/`INFO`/`WARN`/`ERROR`), `service` (the Eureka app name, `spring.application.name`), `module` and `message`. Other keys (MDC values, `logger_name`, `stack_trace`) may follow. Nothing else goes to stdout: the Spring banner is off and Logback status warnings must not appear.
+- The log pipeline reads only these key names and has no per-service fallback. When a service's logs do not show up or the fields do not match, fix the service's log output, never add parsing fallbacks to the pipeline.
+- `module` is derived from the logger name by `ModuleNameConverter`, never set at the call site: for `team.startup.expo.{domain|global}.<x>...` it is `<x>`, otherwise the logger name's parent package. Nest services reuse the per-class logger context (`nestjs-pino` `renameContext: 'module'`).
+- With the `local` profile the same JSON is also written to `${EXPO_LOG_DIR:-~/.expo/logs}/<service>/app.log` for the local Loki file tail. Production writes stdout only (pm2 captures it); add no log file settings there.
+
 ## Workflow
 
 - Run `./gradlew ktlintCheck build` before every commit. Persistence tests use Testcontainers, so Docker must be running.
