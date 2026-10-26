@@ -32,6 +32,10 @@ spring:
       acks: all
       properties:
         enable.idempotence: true
+# 요청마다 접근 로그 한 줄(module=HttpAccess). 끄려면 LOGGING_HTTP_ACCESS_ENABLED=false
+logging:
+  http-access:
+    enabled: ${LOGGING_HTTP_ACCESS_ENABLED:true}
 jwt:
   private-key: ${JWT_PRIVATE_KEY}
   access-token-ttl: 15m
