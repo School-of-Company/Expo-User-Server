@@ -15,6 +15,7 @@ import org.springframework.util.backoff.ExponentialBackOff
 class KafkaConfig(
     private val properties: SurveyAnswerProperties,
     private val qrSmsSentProperties: QrSmsSentProperties,
+    private val expoChangedProperties: ExpoChangedProperties,
 ) {
     /**
      * 일시적 장애는 백오프로 재시도하고, 끝내 처리하지 못한 메시지와 해석할 수 없는 메시지는 dead letter
@@ -33,12 +34,20 @@ class KafkaConfig(
                 maxAttempts = MAX_RETRIES
             }
         return DefaultErrorHandler(recoverer, backOff).apply {
-            addNotRetryableExceptions(MalformedSurveyAnswerEventException::class.java, MalformedQrSmsSentEventException::class.java)
+            addNotRetryableExceptions(
+                MalformedSurveyAnswerEventException::class.java,
+                MalformedQrSmsSentEventException::class.java,
+                MalformedExpoChangedEventException::class.java,
+            )
         }
     }
 
     private fun deadLetterTopicOf(topic: String): String =
-        if (topic == qrSmsSentProperties.topic) qrSmsSentProperties.deadLetterTopic else properties.deadLetterTopic
+        when (topic) {
+            qrSmsSentProperties.topic -> qrSmsSentProperties.deadLetterTopic
+            expoChangedProperties.topic -> expoChangedProperties.deadLetterTopic
+            else -> properties.deadLetterTopic
+        }
 
     private companion object {
         const val INITIAL_INTERVAL_MS = 1_000L
@@ -56,6 +65,12 @@ class MalformedSurveyAnswerEventException(
 
 /** 해석할 수 없는 QR 문자 발송 완료 이벤트. 다시 읽어도 같으므로 재시도 없이 dead letter로 보낸다. */
 class MalformedQrSmsSentEventException(
+    message: String,
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
+
+/** 해석할 수 없는 박람회 변경 이벤트. 다시 읽어도 같으므로 재시도 없이 dead letter로 보낸다. */
+class MalformedExpoChangedEventException(
     message: String,
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)
