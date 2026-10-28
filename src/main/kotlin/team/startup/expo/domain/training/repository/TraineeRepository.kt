@@ -78,6 +78,11 @@ interface TraineeRepository : JpaRepository<Trainee, Long> {
         ids: Collection<Long>,
     ): List<TraineeNameView>
 
+    fun findEntryCardsByExpoIdAndIdIn(
+        expoId: String,
+        ids: Collection<Long>,
+    ): List<TraineeEntryCardView>
+
     fun findByExpoIdOrderById(expoId: String): List<TraineeInfoView>
 
     /** `Containing`은 이름에 든 `%`와 `_`를 와일드카드가 아닌 글자로 취급한다. */

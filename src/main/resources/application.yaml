@@ -64,6 +64,16 @@ qr-sms-sent:
   group-id: ${KAFKA_QR_SMS_SENT_GROUP_ID:expo-user-server.qr-sms-sent}
   consumer:
     auto-startup: true
+# Expo의 박람회 변경 이벤트로 만드는 로컬 프로젝션. KAFKA_EXPO_PROJECTION_ENABLED=true면 컨슈머를 띄우고 박람회 기간·사전등록
+# 회차를 프로젝션에서 읽는다(프로젝션에 없는 박람회는 Expo를 부른다). 기본 false는 지금처럼 Expo를 동기 호출한다
+expo-changed:
+  topic: ${KAFKA_EXPO_CHANGED_TOPIC:expo.expo.changed}
+  dead-letter-topic: ${KAFKA_EXPO_CHANGED_DEAD_LETTER_TOPIC:expo.expo.changed.dlt}
+  group-id: ${KAFKA_EXPO_CHANGED_GROUP_ID:expo-user-server.expo-changed}
+  consumer:
+    auto-startup: ${KAFKA_EXPO_PROJECTION_ENABLED:false}
+expo-projection:
+  enabled: ${KAFKA_EXPO_PROJECTION_ENABLED:false}
 registration-events:
   registered-topic: ${KAFKA_REGISTRATION_REGISTERED_TOPIC:user.participant.registered}
   standard-created-topic: ${KAFKA_REGISTRATION_STANDARD_CREATED_TOPIC:user.standard-participant.created}

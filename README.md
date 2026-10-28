@@ -24,6 +24,15 @@ Expo-User-Server
 - `SWAGGER_ENABLED=true`: `/auth/v3/api-docs`(OpenAPI JSON)와 `/auth/swagger-ui.html`을 연다. Gateway는 경로 접두사로만 서비스를 찾기 때문에 문서를 `/auth` 접두사 아래에 둔다.
 - `SWAGGER_INCLUDE_INTERNAL=true`: `/internal` 하위 API와 `X-Internal-Token` 인증 방식을 문서에 넣는다(기본 `false`, `SWAGGER_ENABLED`가 꺼져 있으면 의미 없다). 문서 예시에는 토큰 값이나 실제 전화번호, `code`를 넣지 않는다.
 
+## 박람회 프로젝션 (`KAFKA_EXPO_PROJECTION_ENABLED`)
+
+기본은 꺼짐이다. 끄면 지금처럼 박람회 기간(`GET /internal/expo/{expo_id}`)과 사전등록 회차(`GET /internal/expo/{expo_id}/preregister-sessions/{session_id}`)를 Expo에 동기로 묻는다.
+
+- `true`면 `expo.expo.changed` 컨슈머(그룹 `expo-user-server.expo-changed`)를 띄우고, 위 두 조회를 로컬 프로젝션(`tb_expo_projection`, `tb_expo_projection_preregister_session`)에서 읽는다. 프로젝션에 없는 박람회는 기존 Expo 호출(서킷브레이커 포함)로 넘어가고, 처음 한 번만 WARN을 남긴다.
+- 박람회마다 마지막으로 반영한 `version`을 두고 그 이하의 이벤트는 버린다. tombstone은 기간과 회차를 지우고 `version`은 남긴다. 해석할 수 없는 이벤트는 `expo.expo.changed.dlt`로 간다.
+- 켠 뒤에는 Expo에 `POST /internal/expo-events/republish`를 한 번 요청해 전체 상태를 채운다. 오래 껐다 다시 켤 때도 같다.
+- 토픽·dead letter·그룹 이름은 `KAFKA_EXPO_CHANGED_TOPIC`, `KAFKA_EXPO_CHANGED_DEAD_LETTER_TOPIC`, `KAFKA_EXPO_CHANGED_GROUP_ID`로 바꿀 수 있다.
+
 ## 방문일 등록 연계 (User #202)
 
 아래 API는 `X-Internal-Token` 전용이다. Application V41의 방문일 원장이 원천이며, User는 프로필과 QR을 변경하지 않는 projection을 보관한다.
