@@ -1,5 +1,6 @@
 package team.startup.expo.domain.participation.service.impl
 
+import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -43,6 +44,7 @@ import java.time.ZoneId
  * 명찰 자동 출력 대상(연수자 전원, 일반 참가자 중 교사·예비교사)이면 같은 트랜잭션에서 출력 작업을 저장한다. 저장이 실패하면
  * 입장도 함께 되돌린다. 작업은 (박람회, 동일인, 방문일)마다 하나라 같은 날 다른 회차로 다시 입장하거나 참가자와 연결된 연수자로
  * 입장해도 새로 만들지 않는다(`badgePrint = DUPLICATE`). 인쇄는 응답 뒤 출력대가 비동기로 한다(`BadgePrintService`).
+ * `badgePrintJobId`는 새로 만든 작업, 또는 이미 있던 그날의 원본 자동 작업의 id다.
  */
 @Service
 class RecordEntryServiceImpl(
@@ -53,6 +55,8 @@ class RecordEntryServiceImpl(
     private val fieldVisits: FieldVisitRepository,
     private val badgePrintRepository: BadgePrintRepository,
 ) : RecordEntryService {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     @Transactional
     override fun execute(reqDto: RecordEntryReqDto): RecordEntryResDto {
         val now = LocalDateTime.now(SEOUL)
@@ -100,7 +104,7 @@ class RecordEntryServiceImpl(
                         ),
                     )
                 }
-                val badgePrint =
+                val badge =
                     if (participant.occupation in BADGE_OCCUPATIONS) {
                         enqueueBadge(
                             reqDto.expoId,
@@ -115,7 +119,7 @@ class RecordEntryServiceImpl(
                     } else {
                         null
                     }
-                standardResponse(participant).copy(badgePrint = badgePrint)
+                standardResponse(participant).copy(badgePrint = badge?.result, badgePrintJobId = badge?.jobId)
             }
 
             ParticipationType.TRAINEE -> {
@@ -141,7 +145,7 @@ class RecordEntryServiceImpl(
                     )
                 }
                 val personKey = trainee.standardParticipantId?.let { "S:$it" } ?: "T:${trainee.id}"
-                val badgePrint =
+                val badge =
                     enqueueBadge(
                         reqDto.expoId,
                         personKey,
@@ -152,7 +156,7 @@ class RecordEntryServiceImpl(
                         trainee.school,
                         now,
                     )
-                traineeResponse(trainee).copy(badgePrint = badgePrint)
+                traineeResponse(trainee).copy(badgePrint = badge.result, badgePrintJobId = badge.jobId)
             }
         }
     }
@@ -196,12 +200,19 @@ class RecordEntryServiceImpl(
         name: String,
         school: String?,
         now: LocalDateTime,
-    ): BadgePrintResult =
-        if (badgePrintRepository.insertAutoJob(expoId, personKey, attendanceDate, participationType, subjectId, name, school, now)) {
-            BadgePrintResult.QUEUED
-        } else {
-            BadgePrintResult.DUPLICATE
+    ): EnqueuedBadge {
+        val job = badgePrintRepository.insertAutoJob(expoId, personKey, attendanceDate, participationType, subjectId, name, school, now)
+        if (job.id == null) {
+            // 같은 트랜잭션에서 충돌한 원본을 다시 못 찾는 경우는 그사이 박람회 삭제뿐이다. 입장은 막지 않고 식별자만 비운다
+            log.warn("명찰 출력 원본 작업을 찾지 못 함: attendanceDate={}", attendanceDate)
         }
+        return EnqueuedBadge(if (job.created) BadgePrintResult.QUEUED else BadgePrintResult.DUPLICATE, job.id)
+    }
+
+    private data class EnqueuedBadge(
+        val result: BadgePrintResult,
+        val jobId: Long?,
+    )
 
     private fun notFound() = ExpectedException(HttpStatus.NOT_FOUND, "행사 참가자를 찾지 못 했습니다.")
 

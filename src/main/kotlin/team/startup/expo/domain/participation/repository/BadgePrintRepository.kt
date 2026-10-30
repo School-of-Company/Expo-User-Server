@@ -11,6 +11,20 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.UUID
 
+/** [BadgePrintRepository.insertAutoJob] 결과. `created`가 `false`면 같은 날 원본 작업이 이미 있었다. */
+data class BadgePrintAutoJob(
+    val id: Long?,
+    val created: Boolean,
+)
+
+/** 재출력 사슬의 가장 최신 작업과 그 작업의 마지막 점유 출력대. 출력대 값은 상태와 상관없이 남은 값이다. */
+data class BadgePrintCurrentJob(
+    val id: Long,
+    val status: BadgePrintJobStatus,
+    val stationId: UUID?,
+    val stationLabel: String?,
+)
+
 data class BadgePrintStation(
     val id: UUID,
     val label: String,
@@ -50,7 +64,11 @@ data class BadgePrintReprint(
 class BadgePrintRepository(
     private val jdbc: JdbcTemplate,
 ) {
-    /** 자동 원본 작업을 저장한다. 같은 사람의 같은 방문일 작업이 이미 있으면 저장하지 않고 `false`를 돌려준다. */
+    /**
+     * 자동 원본 작업을 저장한다. 같은 사람의 같은 방문일 작업이 이미 있으면 저장하지 않고 그 작업의 id를 `created = false`로
+     * 돌려준다. 입장 트랜잭션 안에서 부른다. 동시에 같은 키를 저장하는 트랜잭션이 있으면 `ON CONFLICT`가 그쪽 커밋을 기다리고,
+     * 이어지는 조회는 새 스냅숏(READ COMMITTED)이라 그 행을 본다. 그사이 박람회 삭제로 지워졌으면 `id`가 `null`이다.
+     */
     fun insertAutoJob(
         expoId: String,
         personKey: String,
@@ -60,21 +78,37 @@ class BadgePrintRepository(
         name: String,
         school: String?,
         now: LocalDateTime,
-    ): Boolean =
-        jdbc.update(
-            "INSERT INTO tb_badge_print_job (expo_id, person_key, attendance_date, participation_type, subject_id, name, school, " +
-                "status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'WAITING', ?, ?) " +
-                "ON CONFLICT (expo_id, person_key, attendance_date) WHERE original_job_id IS NULL DO NOTHING",
-            expoId,
-            personKey,
-            attendanceDate,
-            participationType.name,
-            subjectId,
-            name,
-            school,
-            now,
-            now,
-        ) == 1
+    ): BadgePrintAutoJob {
+        val inserted =
+            jdbc
+                .query(
+                    "INSERT INTO tb_badge_print_job (expo_id, person_key, attendance_date, participation_type, subject_id, name, school, " +
+                        "status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'WAITING', ?, ?) " +
+                        "ON CONFLICT (expo_id, person_key, attendance_date) WHERE original_job_id IS NULL DO NOTHING RETURNING id",
+                    idRow,
+                    expoId,
+                    personKey,
+                    attendanceDate,
+                    participationType.name,
+                    subjectId,
+                    name,
+                    school,
+                    now,
+                    now,
+                ).singleOrNull()
+        if (inserted != null) return BadgePrintAutoJob(inserted, created = true)
+        val existing =
+            jdbc
+                .query(
+                    "SELECT id FROM tb_badge_print_job " +
+                        "WHERE expo_id = ? AND person_key = ? AND attendance_date = ? AND original_job_id IS NULL",
+                    idRow,
+                    expoId,
+                    personKey,
+                    attendanceDate,
+                ).singleOrNull()
+        return BadgePrintAutoJob(existing, created = false)
+    }
 
     fun insertStation(
         id: UUID,
@@ -223,6 +257,41 @@ class BadgePrintRepository(
             expoId,
         ) == true
 
+    /**
+     * [jobId]에서 재출력(`original_job_id`)을 따라간 가장 최신 작업을 준다. 한 작업의 재출력은 하나라 사슬은 한 줄이고,
+     * 재출력은 원본의 박람회를 복사하므로 사슬 전체가 [expoId] 안에 있다. [jobId]가 [expoId]의 작업이 아니면 `null`이다.
+     */
+    fun currentJob(
+        expoId: String,
+        jobId: Long,
+    ): BadgePrintCurrentJob? =
+        jdbc
+            .query(
+                """
+                WITH RECURSIVE chain (id, depth) AS (
+                    SELECT id, 0 FROM tb_badge_print_job WHERE id = ? AND expo_id = ?
+                    UNION ALL
+                    SELECT j.id, c.depth + 1 FROM tb_badge_print_job j JOIN chain c ON j.original_job_id = c.id
+                )
+                SELECT j.id, j.status, s.id AS station_id, s.label AS station_label
+                FROM chain c
+                JOIN tb_badge_print_job j ON j.id = c.id
+                LEFT JOIN tb_badge_print_station s ON s.id = j.station_id
+                ORDER BY c.depth DESC
+                LIMIT 1
+                """,
+                { rs, _ ->
+                    BadgePrintCurrentJob(
+                        id = rs.getLong("id"),
+                        status = BadgePrintJobStatus.valueOf(rs.getString("status")),
+                        stationId = rs.getObject("station_id", UUID::class.java),
+                        stationLabel = rs.getString("station_label"),
+                    )
+                },
+                jobId,
+                expoId,
+            ).singleOrNull()
+
     fun attempt(claimToken: UUID): BadgePrintAttempt? = jdbc.query("$ATTEMPT WHERE claim_token = ?", attemptRow, claimToken).singleOrNull()
 
     fun attempts(jobId: Long): List<BadgePrintAttempt> = jdbc.query("$ATTEMPT WHERE job_id = ? ORDER BY claimed_at", attemptRow, jobId)
@@ -350,6 +419,7 @@ class BadgePrintRepository(
     private val stationRow = RowMapper { rs, _ -> station(rs) }
     private val jobRow = RowMapper { rs, _ -> job(rs) }
     private val attemptRow = RowMapper { rs, _ -> attempt(rs) }
+    private val idRow = RowMapper { rs, _ -> rs.getLong(1) }
 
     private companion object {
         // 점유 만료 advisory lock 네임스페이스. 박람회 삭제(26), 참가자 등록(27~30)과 겹치지 않는다
