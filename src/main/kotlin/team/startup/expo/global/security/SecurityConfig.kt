@@ -78,6 +78,8 @@ class SecurityConfig {
                     .hasAuthority(Authority.ROLE_ADMIN.name)
                     .requestMatchers(HttpMethod.DELETE, "/admin", "/admin/{admin_id}")
                     .hasAuthority(Authority.ROLE_ADMIN.name)
+                    .requestMatchers("/admin/badge-prints/**")
+                    .hasAuthority(Authority.ROLE_ADMIN.name)
                     .requestMatchers(InternalTokenAuthenticationFilter.INTERNAL_PATH_MATCHER)
                     .hasAuthority(InternalTokenAuthenticationFilter.SERVICE_AUTHORITY)
                 // API 문서는 켠 경우에만 연다. 꺼져 있으면 아래 anyRequest 규칙에 걸려 막힌다
