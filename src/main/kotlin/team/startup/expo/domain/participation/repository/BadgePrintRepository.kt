@@ -122,13 +122,18 @@ class BadgePrintRepository(
 
     /**
      * 점유 후 [deadline]까지 결과가 없는 작업을 `NEEDS_CHECK`로 닫고 시도를 `EXPIRED`로 남긴다. 다른 트랜잭션이 잡고 있는
-     * 작업은 건너뛰어(그쪽이 결과를 남기거나 다음 회차가 닫는다) 동시에 불러도 서로 기다리지 않는다.
+     * 작업은 건너뛴다(그쪽이 결과를 남기거나 다음 회차가 닫는다).
+     *
+     * 모든 출력대의 작업을 잠그므로 한 번에 한 트랜잭션만 한다. 두 출력대의 claim이 서로의 만료 작업을 잠근 채 각자 자기 출력대의
+     * 점유 작업([activeJob])을 기다리면 교착이 되기 때문이다. 이미 다른 트랜잭션이 하고 있으면 기다리지 않고 0을 돌려준다.
      */
     fun expireClaims(
         deadline: LocalDateTime,
         now: LocalDateTime,
-    ): Int =
-        jdbc.update(
+    ): Int {
+        val locked = jdbc.queryForObject("SELECT pg_try_advisory_xact_lock(?, 0)", Boolean::class.java, EXPIRY_LOCK_NAMESPACE) == true
+        if (!locked) return 0
+        return jdbc.update(
             """
             WITH expired AS (
                 UPDATE tb_badge_print_job j SET status = 'NEEDS_CHECK', updated_at = ?
@@ -144,6 +149,7 @@ class BadgePrintRepository(
             deadline,
             now,
         )
+    }
 
     /** 출력대가 점유 중인 작업. 출력대 잠금 안에서 부른다. */
     fun activeJob(stationId: UUID): BadgePrintJob? =
@@ -346,6 +352,9 @@ class BadgePrintRepository(
     private val attemptRow = RowMapper { rs, _ -> attempt(rs) }
 
     private companion object {
+        // 점유 만료 advisory lock 네임스페이스. 박람회 삭제(26), 참가자 등록(27~30)과 겹치지 않는다
+        const val EXPIRY_LOCK_NAMESPACE = 31
+
         const val STATION = "SELECT id, label, session_id, paused, last_seen_at FROM tb_badge_print_station"
         const val JOB =
             "SELECT id, name, school, status, failures, claim_token, claim_request_id, updated_at FROM tb_badge_print_job"
