@@ -61,6 +61,8 @@ entry의 409는 중복뿐 아니라 FIELD projection 취소·세대·날짜 불�
 
 연수자 전원과 일반 참가자 중 `TEACHER`·`PRE_SERVICE_TEACHER`가 입장하면 `POST /internal/entries`가 같은 트랜잭션에서 출력 작업을 저장한다. 저장이 실패하면 입장도 되돌린다(500). 응답의 `badgePrint`는 `QUEUED`(이번 입장으로 저장), `DUPLICATE`(같은 사람의 같은 방문일 작업이 이미 있음), `null`(대상 아님. 409 재입장 응답에는 없음)이다. 같은 사람은 일반 참가자 `S:{participantId}`, 참가자와 연결된 연수자 `S:{standardParticipantId}`, 연결 없는 연수자 `T:{traineeId}`로 묶어 방문일(KST)마다 한 번만 저장한다. 출력대가 없어도 작업은 `WAITING`으로 남는다. 행사별 설정이나 기능 플래그는 없다.
 
+응답의 `badgePrintJobId`(User #241)는 그 작업의 id다. `QUEUED`면 이번에 만든 작업, `DUPLICATE`면 같은 사람의 같은 방문일 원본 자동 작업(`original_job_id IS NULL`, 재출력 작업이 아님)이고, 대상이 아니면 `null`이다. 저장은 `ON CONFLICT ... DO NOTHING RETURNING id`이고 충돌하면 같은 트랜잭션에서 같은 키로 다시 읽는다. 관리자 화면은 이 id로 아래 `GET /jobs/{jobId}`를 불러 출력대를 안내한다.
+
 관리자 API는 `/admin/badge-prints/{expoId}` 아래이고 `ROLE_ADMIN` access token을 이 서비스가 직접 검증한다. 다른 박람회의 출력대·작업은 404다.
 
 | 메서드·경로 | 요청 → 응답 |
@@ -72,6 +74,7 @@ entry의 409는 중복뿐 아니라 FIELD projection 취소·세대·날짜 불�
 | `POST /stations/{stationId}/claim` | `{sessionId, requestId?}` → 200 `{jobId, claimToken, name, school}` / 204 없음 / 409 이전 세션 |
 | `POST /jobs/{jobId}/result` | `{sessionId, claimToken, outcome: SUBMITTED\|FAILED_BEFORE_PRINT, reason?}` → 204 / 409 |
 | `GET /jobs?status=NEEDS_CHECK,FAILED` | → 오늘(KST) 작업 `{jobs:[{jobId, name, school, status, updatedAt}]}`. `status` 생략 시 `NEEDS_CHECK,FAILED` |
+| `GET /jobs/{jobId}` | → `{jobId, currentJobId, status, station: {stationId, label} \| null}`. 아래 설명 참고 |
 | `GET /jobs/{jobId}/attempts` | → `{attempts:[{stationId, claimedAt, outcome, reason, finishedAt}]}` |
 | `POST /jobs/{jobId}/resolve` | `{action: REQUEUE\|DONE, requestKey}` → 204 / 409 |
 
@@ -80,6 +83,7 @@ entry의 409는 중복뿐 아니라 FIELD projection 취소·세대·날짜 불�
 - claim은 오늘(KST) `WAITING` 중 재시도 시각이 된 가장 오래된 작업을 `FOR UPDATE SKIP LOCKED`로 점유한다. 지난 날짜 작업은 자동으로 주지 않는다. 출력대당 `CLAIMED`는 하나뿐이다(DB 부분 unique).
 - `FAILED_BEFORE_PRINT`는 인쇄 호출 전 확정 실패만 보낸다. 1·2·3번째 실패 뒤 2·5·15초 후 다시 `WAITING`, 4번째 실패에서 `FAILED`다(최초 1회 + 재시도 3회).
 - 점유 후 30초 안에 결과가 없으면 `NEEDS_CHECK`(`EXPIRED`)다. claim 요청 때와 5초 주기 작업(`badge-print.sweeper.*`) 둘 다 처리한다. `NEEDS_CHECK`는 자동으로 다시 출력하지 않는다.
+- `GET /jobs/{jobId}`의 `currentJobId`는 재출력을 따라간 가장 최신 작업(없으면 `jobId`)이고 `status`는 그 작업의 상태다. `station`은 그 작업이 `CLAIMED`·`SUBMITTED`일 때만 점유한 출력대이고, `WAITING`(재시도 대기 포함)·`NEEDS_CHECK`·`FAILED`·`DONE`·`REQUEUED`는 `null`이다. 재시도 대기 작업에도 지난 점유의 `station_id`가 남아 있으므로 출력대 유무가 아니라 상태로 판단한다. 다른 박람회의 작업은 404이고 이름·소속은 주지 않는다.
 - `REQUEUE`는 원본을 `REQUEUED`로 닫고 원본을 가리키는 새 `WAITING` 작업을 오늘 날짜로 만든다. 한 작업은 한 번만 재출력되고, 같은 `requestKey` 재요청은 204, 다른 키는 409다. `DONE`은 처리 완료로 닫는다. 둘 다 `NEEDS_CHECK`·`FAILED`만 처리한다.
 
 출력 화면(Client) 계약. 이미 인쇄했을 수 있는 작업을 다시 실행하지 않는 것이 목적이다.

@@ -8,6 +8,7 @@ import team.startup.expo.domain.participation.presentation.dto.request.ResolveBa
 import team.startup.expo.domain.participation.presentation.dto.request.UpdateBadgePrintStationReqDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintAttemptsResDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintClaimResDto
+import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintJobStateResDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintJobsResDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintSessionResDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintStationResDto
@@ -51,6 +52,12 @@ interface BadgePrintService {
         expoId: String,
         reqDto: GetBadgePrintJobsReqDto,
     ): BadgePrintJobsResDto
+
+    /** 재출력을 따라간 현재 작업의 상태와, 점유 중이거나 인쇄 요청을 넘긴 출력대. 다른 박람회의 작업이면 404다. */
+    fun getJob(
+        expoId: String,
+        jobId: Long,
+    ): BadgePrintJobStateResDto
 
     fun getAttempts(
         expoId: String,

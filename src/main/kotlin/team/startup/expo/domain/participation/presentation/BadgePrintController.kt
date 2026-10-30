@@ -25,6 +25,7 @@ import team.startup.expo.domain.participation.presentation.dto.request.ResolveBa
 import team.startup.expo.domain.participation.presentation.dto.request.UpdateBadgePrintStationReqDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintAttemptsResDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintClaimResDto
+import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintJobStateResDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintJobsResDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintSessionResDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintStationResDto
@@ -110,6 +111,19 @@ class BadgePrintController(
         @PathVariable("expo_id") expoId: String,
         @ParameterObject @Valid @ModelAttribute reqDto: GetBadgePrintJobsReqDto,
     ): BadgePrintJobsResDto = badgePrintService.getJobs(expoId, reqDto)
+
+    @Operation(
+        summary = "작업 상태와 출력대 조회",
+        description =
+            "입장 응답의 badgePrintJobId로 조회합니다. 재출력됐으면 가장 최신 작업(currentJobId)의 상태를 줍니다. station은 " +
+                "CLAIMED·SUBMITTED일 때만 그 작업을 점유한 출력대이고, 아직 점유되지 않았거나 재시도 대기·확인 필요·실패·완료면 null입니다. " +
+                "SUBMITTED는 인쇄 요청 전달이지 종이 출력 완료가 아닙니다. 다른 박람회의 작업은 404입니다.",
+    )
+    @GetMapping("/jobs/{job_id}")
+    fun getJob(
+        @PathVariable("expo_id") expoId: String,
+        @PathVariable("job_id") jobId: Long,
+    ): BadgePrintJobStateResDto = badgePrintService.getJob(expoId, jobId)
 
     @Operation(summary = "작업 시도 이력", description = "점유마다 한 줄입니다. outcome이 없으면 아직 결과가 없는 점유입니다.")
     @GetMapping("/jobs/{job_id}/attempts")
