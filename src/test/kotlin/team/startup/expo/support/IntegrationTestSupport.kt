@@ -30,6 +30,8 @@ import java.util.Base64
         // Kafka 테스트가 자기 @DynamicPropertySource로 true를 줄 때 덮어쓰지 않는다.
         "survey-answer.consumer.auto-startup=false",
         "qr-sms-sent.consumer.auto-startup=false",
+        // 명찰 출력 점유 만료는 테스트가 직접 부른다. 주기 작업이 끼어들면 만료 시점이 흔들린다
+        "badge-print.sweeper.enabled=false",
     ],
 )
 @AutoConfigureMockMvc
