@@ -4,12 +4,15 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import team.startup.expo.domain.participation.entity.BadgePrintResult
+import team.startup.expo.domain.participation.entity.Occupation
 import team.startup.expo.domain.participation.entity.ParticipationType
 import team.startup.expo.domain.participation.entity.StandardParticipant
 import team.startup.expo.domain.participation.entity.StandardParticipantParticipation
 import team.startup.expo.domain.participation.presentation.dto.request.FieldVisitStatus
 import team.startup.expo.domain.participation.presentation.dto.request.RecordEntryReqDto
 import team.startup.expo.domain.participation.presentation.dto.response.RecordEntryResDto
+import team.startup.expo.domain.participation.repository.BadgePrintRepository
 import team.startup.expo.domain.participation.repository.FieldVisitRepository
 import team.startup.expo.domain.participation.repository.StandardParticipantParticipationRepository
 import team.startup.expo.domain.participation.repository.StandardParticipantRepository
@@ -22,6 +25,7 @@ import team.startup.expo.domain.training.repository.TraineeRepository
 import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.util.ParticipantCode
 import team.startup.expo.global.util.PhoneNumbers
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -35,6 +39,10 @@ import java.time.ZoneId
  *
  * 사전등록 회차는 입장 스캔이 판정해 `preregisterSessionId`로 보낸다. 참가자의 신청 회차는 신청 서비스가 입장 서비스에만
  * 알려 주므로 이 서비스는 판정하지 않고 받은 값을 그대로 남긴다. 값이 없으면 회차 없는 입장이다.
+ *
+ * 명찰 자동 출력 대상(연수자 전원, 일반 참가자 중 교사·예비교사)이면 같은 트랜잭션에서 출력 작업을 저장한다. 저장이 실패하면
+ * 입장도 함께 되돌린다. 작업은 (박람회, 동일인, 방문일)마다 하나라 같은 날 다른 회차로 다시 입장하거나 참가자와 연결된 연수자로
+ * 입장해도 새로 만들지 않는다(`badgePrint = DUPLICATE`). 인쇄는 응답 뒤 출력대가 비동기로 한다(`BadgePrintService`).
  */
 @Service
 class RecordEntryServiceImpl(
@@ -43,6 +51,7 @@ class RecordEntryServiceImpl(
     private val traineeRepository: TraineeRepository,
     private val traineeParticipationRepository: TraineeParticipationRepository,
     private val fieldVisits: FieldVisitRepository,
+    private val badgePrintRepository: BadgePrintRepository,
 ) : RecordEntryService {
     @Transactional
     override fun execute(reqDto: RecordEntryReqDto): RecordEntryResDto {
@@ -91,7 +100,22 @@ class RecordEntryServiceImpl(
                         ),
                     )
                 }
-                standardResponse(participant)
+                val badgePrint =
+                    if (participant.occupation in BADGE_OCCUPATIONS) {
+                        enqueueBadge(
+                            reqDto.expoId,
+                            "S:${participant.id}",
+                            attendanceDate,
+                            ParticipationType.STANDARD,
+                            participant.id!!,
+                            participant.name,
+                            participant.school,
+                            now,
+                        )
+                    } else {
+                        null
+                    }
+                standardResponse(participant).copy(badgePrint = badgePrint)
             }
 
             ParticipationType.TRAINEE -> {
@@ -116,7 +140,19 @@ class RecordEntryServiceImpl(
                         ),
                     )
                 }
-                traineeResponse(trainee)
+                val personKey = trainee.standardParticipantId?.let { "S:$it" } ?: "T:${trainee.id}"
+                val badgePrint =
+                    enqueueBadge(
+                        reqDto.expoId,
+                        personKey,
+                        attendanceDate,
+                        ParticipationType.TRAINEE,
+                        trainee.id!!,
+                        trainee.name,
+                        trainee.school,
+                        now,
+                    )
+                traineeResponse(trainee).copy(badgePrint = badgePrint)
             }
         }
     }
@@ -151,6 +187,22 @@ class RecordEntryServiceImpl(
         }
     }
 
+    private fun enqueueBadge(
+        expoId: String,
+        personKey: String,
+        attendanceDate: LocalDate,
+        participationType: ParticipationType,
+        subjectId: Long,
+        name: String,
+        school: String?,
+        now: LocalDateTime,
+    ): BadgePrintResult =
+        if (badgePrintRepository.insertAutoJob(expoId, personKey, attendanceDate, participationType, subjectId, name, school, now)) {
+            BadgePrintResult.QUEUED
+        } else {
+            BadgePrintResult.DUPLICATE
+        }
+
     private fun notFound() = ExpectedException(HttpStatus.NOT_FOUND, "행사 참가자를 찾지 못 했습니다.")
 
     private fun standardResponse(participant: StandardParticipant): RecordEntryResDto {
@@ -184,5 +236,8 @@ class RecordEntryServiceImpl(
 
     private companion object {
         val SEOUL: ZoneId = ZoneId.of("Asia/Seoul")
+
+        // 명찰 자동 출력 대상 직업. 연수자는 직업이 없지만 모두 교원이라 전원 대상이다
+        val BADGE_OCCUPATIONS = setOf(Occupation.TEACHER, Occupation.PRE_SERVICE_TEACHER)
     }
 }

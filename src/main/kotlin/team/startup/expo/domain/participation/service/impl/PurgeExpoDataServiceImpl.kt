@@ -11,7 +11,7 @@ import team.startup.expo.domain.participation.service.PurgeExpoDataService
  * 끝나 재시도할 수 있어야 하고, 이미 지웠거나 데이터가 없어도 성공해야 한다.
  *
  * 모두 한 트랜잭션이라 중간에 실패하면 삭제 기록과 데이터가 함께 되돌아간다. 입장 기록과 설문 답변은 참가자에
- * `ON DELETE CASCADE`로 걸려 있어 참가자를 지우면 같이 지워지고, 설문 답변 이벤트 기록(`tb_survey_answer_event`), 등록 요청 기록(`tb_registration_request`), 등록 취소 기록(`tb_registration_cancellation`), 등록 아웃박스(`tb_registration_outbox`), 전화 인증 집계 기록(`tb_participant_phone_verification`)은 `expo_id`로 지운다. 문자 이벤트 기록(`tb_sms_try_event`)은 참가자에 `ON DELETE CASCADE`로 걸려 있다.
+ * `ON DELETE CASCADE`로 걸려 있어 참가자를 지우면 같이 지워지고, 설문 답변 이벤트 기록(`tb_survey_answer_event`), 등록 요청 기록(`tb_registration_request`), 등록 취소 기록(`tb_registration_cancellation`), 등록 아웃박스(`tb_registration_outbox`), 전화 인증 집계 기록(`tb_participant_phone_verification`), 명찰 출력 작업·출력대(`tb_badge_print_job`, `tb_badge_print_station`)는 `expo_id`로 지운다. 문자 이벤트 기록(`tb_sms_try_event`)은 참가자에 `ON DELETE CASCADE`로 걸려 있다.
  */
 @Service
 class PurgeExpoDataServiceImpl(
@@ -37,6 +37,9 @@ class PurgeExpoDataServiceImpl(
         jdbcTemplate.update("DELETE FROM tb_field_visit_operation WHERE expo_id = ?", expoId)
         // 전화 인증 집계 기록도 참가자에 딸려 있지 않아 따로 지운다
         jdbcTemplate.update("DELETE FROM tb_participant_phone_verification WHERE expo_id = ?", expoId)
+        // 명찰 출력 작업은 이름·소속을 복사해 두므로 지운다. 시도 이력과 재출력 작업은 작업에 딸려 지워진다
+        jdbcTemplate.update("DELETE FROM tb_badge_print_job WHERE expo_id = ?", expoId)
+        jdbcTemplate.update("DELETE FROM tb_badge_print_station WHERE expo_id = ?", expoId)
         jdbcTemplate.update("UPDATE tb_expo_deletion SET completed_at = (now() AT TIME ZONE 'UTC') WHERE expo_id = ?", expoId)
     }
 }

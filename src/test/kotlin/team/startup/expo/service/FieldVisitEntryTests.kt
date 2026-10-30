@@ -42,7 +42,7 @@ class FieldVisitEntryTests :
                     applicationType = ApplicationType.PRE,
                     applicationDate = LocalDateTime.now(),
                 )
-            val service = RecordEntryServiceImpl(participants, entries, mockk(), mockk(), visits)
+            val service = RecordEntryServiceImpl(participants, entries, mockk(), mockk(), visits, mockk())
             val status = GetEntryStatusServiceImpl(participants, entries)
             val saved = slot<StandardParticipantParticipation>()
 
