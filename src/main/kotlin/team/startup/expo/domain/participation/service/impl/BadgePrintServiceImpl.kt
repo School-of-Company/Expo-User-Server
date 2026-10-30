@@ -18,6 +18,8 @@ import team.startup.expo.domain.participation.presentation.dto.response.BadgePri
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintAttemptsResDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintClaimResDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintJobResDto
+import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintJobStateResDto
+import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintJobStationResDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintJobsResDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintSessionResDto
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintStationResDto
@@ -164,6 +166,22 @@ class BadgePrintServiceImpl(
     }
 
     @Transactional(readOnly = true)
+    override fun getJob(
+        expoId: String,
+        jobId: Long,
+    ): BadgePrintJobStateResDto {
+        val current = badgePrintRepository.currentJob(expoId, jobId) ?: throw jobNotFound()
+        // station_id는 마지막 점유 값이 상태와 상관없이 남으므로(재시도 대기 포함) 상태로 판단한다
+        val station =
+            if (current.status in STATION_STATUSES && current.stationId != null && current.stationLabel != null) {
+                BadgePrintJobStationResDto(current.stationId, current.stationLabel)
+            } else {
+                null
+            }
+        return BadgePrintJobStateResDto(jobId, current.id, current.status, station)
+    }
+
+    @Transactional(readOnly = true)
     override fun getAttempts(
         expoId: String,
         jobId: Long,
@@ -243,6 +261,9 @@ class BadgePrintServiceImpl(
 
         /** n번째 인쇄 전 실패 뒤 다시 대기하기까지의 초. 실패가 이보다 많으면(4번째) `FAILED`이다. */
         val RETRY_DELAYS_SECONDS = listOf(2L, 5L, 15L)
+
+        /** 출력대를 안내하는 상태. 지금 점유 중이거나 그 출력대가 인쇄 요청을 넘긴 작업이다. */
+        private val STATION_STATUSES = setOf(BadgePrintJobStatus.CLAIMED, BadgePrintJobStatus.SUBMITTED)
 
         private val SEOUL: ZoneId = ZoneId.of("Asia/Seoul")
     }

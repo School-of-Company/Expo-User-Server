@@ -92,10 +92,13 @@ class BadgePrintApiTests : IntegrationTestSupport() {
         val preTeacher = standard(Occupation.PRE_SERVICE_TEACHER)
         val parent = standard(Occupation.PARENT)
 
-        enter(teacher).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("QUEUED"))
-        enter(teacher, sessionId = 7).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("DUPLICATE"))
-        enter(preTeacher).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("QUEUED"))
-        enter(parent).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").doesNotExist())
+        val queued = enter(teacher).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("QUEUED")).json()
+        val duplicate = enter(teacher, sessionId = 7).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("DUPLICATE")).json()
+        val preQueued = enter(preTeacher).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("QUEUED")).json()
+        enter(parent)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.badgePrint").doesNotExist())
+            .andExpect(jsonPath("$.badgePrintJobId").doesNotExist())
         // 같은 회차 재입장(409)은 결과를 주지 않고 작업도 만들지 않는다
         enter(teacher, sessionId = 7).andExpect(status().isConflict).andExpect(jsonPath("$.badgePrint").doesNotExist())
 
@@ -103,6 +106,10 @@ class BadgePrintApiTests : IntegrationTestSupport() {
             listOf("S:${teacher.id}", "S:${preTeacher.id}")
         jdbcTemplate.queryForMap("SELECT name, school, status FROM tb_badge_print_job WHERE id = 1") shouldBe
             mapOf("name" to "참가자", "school" to "광주소프트웨어마이스터고", "status" to "WAITING")
+        // 같은 날 다른 회차(DUPLICATE)도 그날의 원본 작업 id를 준다
+        queued["badgePrintJobId"].asLong() shouldBe jobIdOf("S:${teacher.id}")
+        duplicate["badgePrintJobId"].asLong() shouldBe jobIdOf("S:${teacher.id}")
+        preQueued["badgePrintJobId"].asLong() shouldBe jobIdOf("S:${preTeacher.id}")
     }
 
     @Test
@@ -112,11 +119,13 @@ class BadgePrintApiTests : IntegrationTestSupport() {
         val alone = trainee()
 
         enter(teacher).andExpect(jsonPath("$.badgePrint").value("QUEUED"))
-        enterTrainee(linked).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("DUPLICATE"))
-        enterTrainee(alone).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("QUEUED"))
+        val linkedEntry = enterTrainee(linked).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("DUPLICATE")).json()
+        val aloneEntry = enterTrainee(alone).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("QUEUED")).json()
 
         jdbcTemplate.queryForList("SELECT person_key FROM tb_badge_print_job ORDER BY id", String::class.java) shouldBe
             listOf("S:${teacher.id}", "T:${alone.id}")
+        linkedEntry["badgePrintJobId"].asLong() shouldBe jobIdOf("S:${teacher.id}")
+        aloneEntry["badgePrintJobId"].asLong() shouldBe jobIdOf("T:${alone.id}")
     }
 
     @Test
@@ -160,11 +169,13 @@ class BadgePrintApiTests : IntegrationTestSupport() {
                         },
                     )
                 }.also { start.countDown() }
-                .map { it.get(30, TimeUnit.SECONDS)["badgePrint"].asString() }
+                .map { it.get(30, TimeUnit.SECONDS) }
 
-        results.count { it == "QUEUED" } shouldBe 1
-        results.count { it == "DUPLICATE" } shouldBe THREADS - 1
+        results.count { it["badgePrint"].asString() == "QUEUED" } shouldBe 1
+        results.count { it["badgePrint"].asString() == "DUPLICATE" } shouldBe THREADS - 1
         count("tb_badge_print_job") shouldBe 1
+        // 충돌한 입장도 먼저 커밋된 작업의 id를 받는다
+        results.map { it["badgePrintJobId"].asLong() }.toSet() shouldBe setOf(jobIdOf("S:${teacher.id}"))
     }
 
     @Test
@@ -481,6 +492,80 @@ class BadgePrintApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `작업 조회는 점유 전에는 출력대가 없고 점유와 인쇄 요청 전달 때만 그 출력대를 준다`() {
+        val jobId = enter(standard(Occupation.TEACHER)).json()["badgePrintJobId"].asLong()
+
+        val waiting = job(jobId)
+        waiting["jobId"].asLong() shouldBe jobId
+        waiting["currentJobId"].asLong() shouldBe jobId
+        waiting["status"].asString() shouldBe "WAITING"
+        waiting["station"].isNull shouldBe true
+        waiting.has("name") shouldBe false
+
+        val station = createStation()
+        val claimed = claim(station).andExpect(status().isOk).json()
+        val inProgress = job(jobId)
+        inProgress["status"].asString() shouldBe "CLAIMED"
+        inProgress["station"]["stationId"].asString() shouldBe station.id.toString()
+        inProgress["station"]["label"].asString() shouldBe "출력대 1"
+
+        result(station, claimed, "SUBMITTED").andExpect(status().isNoContent)
+        val submitted = job(jobId)
+        submitted["status"].asString() shouldBe "SUBMITTED"
+        submitted["station"]["stationId"].asString() shouldBe station.id.toString()
+    }
+
+    @Test
+    fun `인쇄 전 실패 뒤 재대기 중에는 이전 출력대를 주지 않고 다른 출력대가 점유하면 그 출력대를 준다`() {
+        val jobId = enter(standard(Occupation.TEACHER)).json()["badgePrintJobId"].asLong()
+        val first = createStation()
+        val second = createStation()
+        val claimed = claim(first).andExpect(status().isOk).json()
+        result(first, claimed, "FAILED_BEFORE_PRINT").andExpect(status().isNoContent)
+
+        // station_id에는 지난 점유가 남아 있지만 상태가 WAITING이라 배정으로 보여 주지 않는다
+        jdbcTemplate.queryForObject("SELECT station_id FROM tb_badge_print_job WHERE id = ?", UUID::class.java, jobId) shouldBe first.id
+        val retrying = job(jobId)
+        retrying["status"].asString() shouldBe "WAITING"
+        retrying["station"].isNull shouldBe true
+
+        jdbcTemplate.update("UPDATE tb_badge_print_job SET next_attempt_at = next_attempt_at - interval '1 minute'")
+        claim(second).andExpect(status().isOk).andExpect(jsonPath("$.jobId").value(jobId.toInt()))
+        val reclaimed = job(jobId)
+        reclaimed["status"].asString() shouldBe "CLAIMED"
+        reclaimed["station"]["stationId"].asString() shouldBe second.id.toString()
+        reclaimed["station"]["label"].asString() shouldBe "출력대 2"
+    }
+
+    @Test
+    fun `확인 필요 작업은 출력대가 없고 REQUEUE 뒤 원본으로 조회하면 재출력 작업을 따라간다`() {
+        val jobId = enter(standard(Occupation.TEACHER)).json()["badgePrintJobId"].asLong()
+        val station = createStation()
+        claim(station).andExpect(status().isOk)
+        badgeExpire()
+        job(jobId).let {
+            it["status"].asString() shouldBe "NEEDS_CHECK"
+            it["station"].isNull shouldBe true
+        }
+
+        resolve(jobId, "REQUEUE", UUID.randomUUID()).andExpect(status().isNoContent)
+        val reprintId =
+            jdbcTemplate.queryForObject("SELECT id FROM tb_badge_print_job WHERE original_job_id = ?", Long::class.java, jobId)!!
+        val requeued = job(jobId)
+        requeued["jobId"].asLong() shouldBe jobId
+        requeued["currentJobId"].asLong() shouldBe reprintId
+        requeued["status"].asString() shouldBe "WAITING"
+        requeued["station"].isNull shouldBe true
+
+        claim(station).andExpect(status().isOk).andExpect(jsonPath("$.jobId").value(reprintId.toInt()))
+        val reprinting = job(jobId)
+        reprinting["currentJobId"].asLong() shouldBe reprintId
+        reprinting["status"].asString() shouldBe "CLAIMED"
+        reprinting["station"]["stationId"].asString() shouldBe station.id.toString()
+        job(reprintId)["currentJobId"].asLong() shouldBe reprintId
+    }
+
+    @Test
     fun `박람회 삭제는 작업과 출력대와 시도 이력을 지운다`() {
         enter(standard(Occupation.TEACHER))
         val station = createStation()
@@ -518,6 +603,13 @@ class BadgePrintApiTests : IntegrationTestSupport() {
         mockMvc
             .perform(get("/admin/badge-prints/$OTHER_EXPO/jobs/1/attempts").header("Authorization", bearerOf(adminId)))
             .andExpect(status().isNotFound)
+        mockMvc.perform(get("$BASE/jobs/1")).andExpect(status().isUnauthorized)
+        mockMvc
+            .perform(get("/admin/badge-prints/$OTHER_EXPO/jobs/1").header("Authorization", bearerOf(adminId)))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.message").value("출력 작업을 찾지 못 했습니다."))
+        mockMvc.perform(get("$BASE/jobs/999").header("Authorization", bearerOf(adminId))).andExpect(status().isNotFound)
+        mockMvc.perform(get("$BASE/jobs/1").header("Authorization", bearerOf(adminId))).andExpect(status().isOk)
         mockMvc
             .perform(
                 post("/admin/badge-prints/$OTHER_EXPO/jobs/1/resolve")
@@ -683,6 +775,19 @@ class BadgePrintApiTests : IntegrationTestSupport() {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"action":"$action","requestKey":"$key"}"""),
         )
+
+    private fun job(jobId: Long): JsonNode =
+        mockMvc
+            .perform(get("$BASE/jobs/$jobId").header("Authorization", bearerOf(adminId)))
+            .andExpect(status().isOk)
+            .json()
+
+    private fun jobIdOf(personKey: String): Long =
+        jdbcTemplate.queryForObject(
+            "SELECT id FROM tb_badge_print_job WHERE person_key = ? AND original_job_id IS NULL",
+            Long::class.java,
+            personKey,
+        )!!
 
     private fun getJobs(): ResultActions = mockMvc.perform(get("$BASE/jobs").header("Authorization", bearerOf(adminId)))
 

@@ -46,6 +46,23 @@ data class BadgePrintJobResDto(
     val updatedAt: LocalDateTime,
 )
 
+/**
+ * 입장 안내용 작업 조회. `jobId`는 요청한 작업, `currentJobId`는 재출력을 따라간 가장 최신 작업(없으면 `jobId`)이고 `status`는
+ * `currentJobId`의 상태다. `station`은 그 작업이 `CLAIMED`·`SUBMITTED`일 때만 점유한 출력대이고, 그 밖의 상태(재시도 대기
+ * `WAITING` 포함)는 `null`이다. 지난 점유의 출력대를 현재 배정처럼 보여 주지 않기 위해서다.
+ */
+data class BadgePrintJobStateResDto(
+    val jobId: Long,
+    val currentJobId: Long,
+    val status: BadgePrintJobStatus,
+    val station: BadgePrintJobStationResDto?,
+)
+
+data class BadgePrintJobStationResDto(
+    val stationId: UUID,
+    val label: String,
+)
+
 data class BadgePrintAttemptsResDto(
     val attempts: List<BadgePrintAttemptResDto>,
 )
