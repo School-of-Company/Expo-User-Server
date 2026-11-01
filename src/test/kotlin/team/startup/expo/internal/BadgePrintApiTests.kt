@@ -325,7 +325,7 @@ class BadgePrintApiTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `점유 후 30초 안에 결과가 없으면 claim 때 확인 필요가 되고 늦은 결과는 409이다`() {
+    fun `점유 후 30초 안에 결과가 없으면 claim 때 확인 필요가 되고 늦은 SUBMITTED 보고는 SUBMITTED로 닫는다`() {
         enter(standard(Occupation.TEACHER))
         enter(standard(Occupation.TEACHER))
         val station = createStation()
@@ -337,8 +337,368 @@ class BadgePrintApiTests : IntegrationTestSupport() {
 
         statusOf(1) shouldBe "NEEDS_CHECK"
         attemptOutcomes(1) shouldBe listOf("EXPIRED")
-        result(station, claimed, "SUBMITTED").andExpect(status().isConflict)
+
+        result(station, claimed, "SUBMITTED").andExpect(status().isNoContent)
+        statusOf(1) shouldBe "SUBMITTED"
+        // 반영 뒤 같은 결과 재전송은 204, 다른 결과는 409이다
+        result(station, claimed, "SUBMITTED").andExpect(status().isNoContent)
+        result(station, claimed, "FAILED_BEFORE_PRINT").andExpect(status().isConflict)
+        statusOf(1) shouldBe "SUBMITTED"
+        jdbcTemplate.queryForMap("SELECT outcome, previous_outcome FROM tb_badge_print_attempt WHERE job_id = 1") shouldBe
+            mapOf("outcome" to "SUBMITTED", "previous_outcome" to "EXPIRED")
+        jdbcTemplate.queryForObject("SELECT failures FROM tb_badge_print_job WHERE id = 1", Int::class.java) shouldBe 0
+    }
+
+    @Test
+    fun `인수된 점유에 새 세션이 인쇄 전 실패를 늦게 보고하면 재대기하고 다른 출력대가 다시 받는다`() {
+        enter(standard(Occupation.TEACHER))
+        val station = createStation()
+        val other = createStation()
+        val claimed = claim(station).andExpect(status().isOk).json()
+        val refreshed = station.copy(sessionId = openSession(station))
+        attemptOutcomes(1) shouldBe listOf("TAKEN_OVER")
+
+        // 이전 세션의 보고는 지금처럼 409이다
+        result(station, claimed, "FAILED_BEFORE_PRINT").andExpect(status().isConflict)
         statusOf(1) shouldBe "NEEDS_CHECK"
+
+        result(refreshed, claimed, "FAILED_BEFORE_PRINT", reason = "print not called").andExpect(status().isNoContent)
+        val row = jdbcTemplate.queryForMap("SELECT status, failures, next_attempt_at, updated_at FROM tb_badge_print_job WHERE id = 1")
+        row["status"] shouldBe "WAITING"
+        row["failures"] shouldBe 1
+        ChronoUnit.SECONDS.between(
+            (row["updated_at"] as java.sql.Timestamp).toLocalDateTime(),
+            (row["next_attempt_at"] as java.sql.Timestamp).toLocalDateTime(),
+        ) shouldBe 2L
+        mockMvc
+            .perform(get("$BASE/jobs/1/attempts").header("Authorization", bearerOf(adminId)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.attempts.length()").value(1))
+            .andExpect(jsonPath("$.attempts[0].outcome").value("FAILED_BEFORE_PRINT"))
+            .andExpect(jsonPath("$.attempts[0].reason").value("print not called"))
+            .andExpect(jsonPath("$.attempts[0].previousOutcome").value("TAKEN_OVER"))
+            .andExpect(jsonPath("$.attempts[0].previousFinishedAt").isNotEmpty)
+        // 재시도 시각 전에는 주지 않는다
+        claim(other).andExpect(status().isNoContent)
+        jdbcTemplate.update("UPDATE tb_badge_print_job SET next_attempt_at = next_attempt_at - interval '1 minute'")
+
+        val reclaimed = claim(other).andExpect(status().isOk).json()
+        reclaimed["jobId"].asLong() shouldBe 1L
+        // 다시 점유된 뒤에도 앞 점유의 같은 결과 재전송은 204이고 지금 점유를 건드리지 않는다
+        result(refreshed, claimed, "FAILED_BEFORE_PRINT", reason = "print not called").andExpect(status().isNoContent)
+        result(refreshed, claimed, "SUBMITTED").andExpect(status().isConflict)
+        statusOf(1) shouldBe "CLAIMED"
+        jdbcTemplate.queryForObject("SELECT failures FROM tb_badge_print_job WHERE id = 1", Int::class.java) shouldBe 1
+        result(other, reclaimed, "SUBMITTED").andExpect(status().isNoContent)
+        attemptOutcomes(1) shouldBe listOf("FAILED_BEFORE_PRINT", "SUBMITTED")
+    }
+
+    @Test
+    fun `직원이 다시 대기열에 넣거나 완료로 닫은 작업의 늦은 보고는 409이고 아무것도 바꾸지 않는다`() {
+        enter(standard(Occupation.TEACHER))
+        enter(standard(Occupation.TEACHER))
+        val station = createStation()
+        val first = claim(station).andExpect(status().isOk).json()
+        // 결과 없이 다음 claim을 보내 첫 작업은 ABANDONED가 된다
+        val second = claim(station).andExpect(status().isOk).json()
+        badgeExpire()
+        attemptOutcomes(1) shouldBe listOf("ABANDONED")
+        attemptOutcomes(2) shouldBe listOf("EXPIRED")
+
+        resolve(1, "REQUEUE", UUID.randomUUID()).andExpect(status().isNoContent)
+        resolve(2, "DONE", UUID.randomUUID()).andExpect(status().isNoContent)
+
+        result(station, first, "FAILED_BEFORE_PRINT").andExpect(status().isConflict)
+        result(station, first, "SUBMITTED").andExpect(status().isConflict)
+        result(station, second, "FAILED_BEFORE_PRINT").andExpect(status().isConflict)
+        result(station, second, "SUBMITTED").andExpect(status().isConflict)
+
+        jdbcTemplate.queryForList("SELECT status FROM tb_badge_print_job ORDER BY id", String::class.java) shouldBe
+            listOf("REQUEUED", "DONE", "WAITING")
+        jdbcTemplate.queryForList("SELECT failures FROM tb_badge_print_job ORDER BY id", Int::class.java) shouldBe listOf(0, 0, 0)
+        attemptOutcomes(1) shouldBe listOf("ABANDONED")
+        attemptOutcomes(2) shouldBe listOf("EXPIRED")
+        jdbcTemplate
+            .queryForList("SELECT previous_outcome FROM tb_badge_print_attempt ORDER BY job_id", String::class.java)
+            .filterNotNull()
+            .shouldBeEmpty()
+    }
+
+    @Test
+    fun `늦은 보고와 직원 처리가 동시에 오면 하나만 반영되고 재출력과 자동 재시도가 겹치지 않는다`() {
+        val rounds = 6
+        repeat(rounds) { enter(standard(Occupation.TEACHER)) }
+        var station = createStation()
+        // 작업마다 점유한 뒤 출력 화면을 새로 열어(TAKEN_OVER) 결과 모름으로 닫는다
+        val claims =
+            (1..rounds).map {
+                val claimed = claim(station).andExpect(status().isOk).json()
+                station = station.copy(sessionId = openSession(station))
+                claimed
+            }
+        val current = station
+
+        claims.forEach { claimed ->
+            val jobId = claimed["jobId"].asLong()
+            val start = CountDownLatch(1)
+            val report =
+                executor.submit(
+                    Callable {
+                        start.await()
+                        result(current, claimed, "FAILED_BEFORE_PRINT").andReturn().response.status
+                    },
+                )
+            val requeue =
+                executor.submit(
+                    Callable {
+                        start.await()
+                        resolve(jobId, "REQUEUE", UUID.randomUUID()).andReturn().response.status
+                    },
+                )
+            start.countDown()
+            val statuses = report.get(30, TimeUnit.SECONDS) to requeue.get(30, TimeUnit.SECONDS)
+            val reprints =
+                jdbcTemplate.queryForObject("SELECT count(*) FROM tb_badge_print_job WHERE original_job_id = ?", Long::class.java, jobId)
+
+            if (statuses.first == 204) {
+                statuses.second shouldBe 409
+                statusOf(jobId) shouldBe "WAITING"
+                reprints shouldBe 0L
+                attemptOutcomes(jobId) shouldBe listOf("FAILED_BEFORE_PRINT")
+            } else {
+                statuses shouldBe (409 to 204)
+                statusOf(jobId) shouldBe "REQUEUED"
+                reprints shouldBe 1L
+                attemptOutcomes(jobId) shouldBe listOf("TAKEN_OVER")
+            }
+        }
+    }
+
+    @Test
+    fun `같은 늦은 보고를 동시에 여러 번 보내도 한 번만 반영된다`() {
+        enter(standard(Occupation.TEACHER))
+        enter(standard(Occupation.TEACHER))
+        val station = createStation()
+        val other = createStation()
+        val abandoned = claim(station).andExpect(status().isOk).json()
+        claim(station).andExpect(status().isOk)
+        attemptOutcomes(1) shouldBe listOf("ABANDONED")
+
+        // 같은 보고의 재전송과 주기 만료·다른 출력대 claim이 함께 와도 작업은 한 번만 재대기하고 한 곳에만 나간다
+        val start = CountDownLatch(1)
+        val reports =
+            (1..THREADS).map {
+                executor.submit(
+                    Callable {
+                        start.await()
+                        result(station, abandoned, "FAILED_BEFORE_PRINT").andReturn().response.status
+                    },
+                )
+            }
+        val sweep =
+            executor.submit(
+                Callable {
+                    start.await()
+                    badgePrintService.expireClaims()
+                },
+            )
+        val otherClaim =
+            executor.submit(
+                Callable {
+                    start.await()
+                    claim(other).andReturn().response.status
+                },
+            )
+        start.countDown()
+
+        reports.map { it.get(30, TimeUnit.SECONDS) }.toSet() shouldBe setOf(204)
+        sweep.get(30, TimeUnit.SECONDS)
+        otherClaim.get(30, TimeUnit.SECONDS) shouldBe 204
+        jdbcTemplate.queryForMap("SELECT status, failures FROM tb_badge_print_job WHERE id = 1") shouldBe
+            mapOf("status" to "WAITING", "failures" to 1)
+        attemptOutcomes(1) shouldBe listOf("FAILED_BEFORE_PRINT")
+        statusOf(2) shouldBe "CLAIMED"
+
+        jdbcTemplate.update("UPDATE tb_badge_print_job SET next_attempt_at = next_attempt_at - interval '1 minute' WHERE id = 1")
+        val claimers = listOf(other, createStation(), createStation())
+        val start2 = CountDownLatch(1)
+        val claimedJobs =
+            claimers
+                .map { claimer ->
+                    executor.submit(
+                        Callable {
+                            start2.await()
+                            claim(claimer).andReturn().response.let {
+                                if (it.status == 200) jsonMapper.readTree(it.contentAsString)["jobId"].asLong() else null
+                            }
+                        },
+                    )
+                }.also { start2.countDown() }
+                .mapNotNull { it.get(30, TimeUnit.SECONDS) }
+        claimedJobs shouldBe listOf(1L)
+        jdbcTemplate.queryForObject("SELECT count(*) FROM tb_badge_print_attempt WHERE job_id = 1", Long::class.java) shouldBe 2L
+    }
+
+    @Test
+    fun `30초가 지난 점유의 결과 보고와 주기 만료와 다른 출력대 claim이 함께 와도 결과는 한 번만 반영되고 다른 곳에 나가지 않는다`() {
+        val rounds = 6
+        repeat(rounds) { enter(standard(Occupation.TEACHER)) }
+        val station = createStation()
+        val others = (1..2).map { createStation() }
+        repeat(rounds) { index ->
+            val outcome = if (index % 2 == 0) "SUBMITTED" else "FAILED_BEFORE_PRINT"
+            val claimed = claim(station).andExpect(status().isOk).json()
+            val jobId = claimed["jobId"].asLong()
+            jdbcTemplate.update("UPDATE tb_badge_print_job SET claimed_at = claimed_at - interval '31 seconds' WHERE id = ?", jobId)
+            val start = CountDownLatch(1)
+            val report = executor.submit(Callable { start.await().let { result(station, claimed, outcome).andReturn().response.status } })
+            val sweep = executor.submit(Callable { start.await().let { badgePrintService.expireClaims() } })
+            val otherClaims = others.map { executor.submit(Callable { start.await().let { claimedJobOf(it) } }) }
+            start.countDown()
+
+            // 만료가 먼저면 늦은 보고로, 보고가 먼저면 정상 보고로 반영된다. 어느 쪽이든 결과는 보고값이다
+            report.get(30, TimeUnit.SECONDS) shouldBe 204
+            sweep.get(30, TimeUnit.SECONDS)
+            // 다른 출력대는 이 작업을 받지 못한다(점유 중, 확인 필요, 재시도 대기 중 하나다). 남은 작업은 받을 수 있다
+            val taken = otherClaims.mapNotNull { it.get(30, TimeUnit.SECONDS) }
+            taken.contains(jobId) shouldBe false
+            statusOf(jobId) shouldBe if (outcome == "SUBMITTED") "SUBMITTED" else "WAITING"
+            attemptOutcomes(jobId) shouldBe listOf(outcome)
+            // 다음 회차가 섞이지 않게 이 작업은 닫고, 다른 출력대가 받은 작업은 결과 없이 대기로 돌린다
+            jdbcTemplate.update("UPDATE tb_badge_print_job SET status = 'DONE' WHERE id = ?", jobId)
+            jdbcTemplate.update(
+                "UPDATE tb_badge_print_job SET status = 'WAITING', station_id = NULL, claim_token = NULL WHERE status = 'CLAIMED'",
+            )
+            jdbcTemplate.update("DELETE FROM tb_badge_print_attempt WHERE outcome IS NULL")
+        }
+    }
+
+    @Test
+    fun `늦은 SUBMITTED 보고와 직원 처리가 동시에 오면 직원이 본 상태로 한쪽만 반영된다`() {
+        val rounds = 8
+        repeat(rounds) { enter(standard(Occupation.TEACHER)) }
+        var station = createStation()
+        val claims =
+            (1..rounds).map {
+                val claimed = claim(station).andExpect(status().isOk).json()
+                station = station.copy(sessionId = openSession(station))
+                claimed
+            }
+        val current = station
+
+        claims.forEachIndexed { index, claimed ->
+            val jobId = claimed["jobId"].asLong()
+            val action = if (index % 2 == 0) "REQUEUE" else "DONE"
+            val start = CountDownLatch(1)
+            val report =
+                executor.submit(Callable { start.await().let { result(current, claimed, "SUBMITTED").andReturn().response.status } })
+            val resolved =
+                executor.submit(
+                    Callable {
+                        start.await().let { resolve(jobId, action, UUID.randomUUID(), "NEEDS_CHECK").andReturn().response.status }
+                    },
+                )
+            start.countDown()
+            val statuses = report.get(30, TimeUnit.SECONDS) to resolved.get(30, TimeUnit.SECONDS)
+
+            if (statuses.first == 204) {
+                statuses.second shouldBe 409
+                statusOf(jobId) shouldBe "SUBMITTED"
+                reprintCount(jobId) shouldBe 0L
+                attemptOutcomes(jobId) shouldBe listOf("SUBMITTED")
+            } else {
+                statuses shouldBe (409 to 204)
+                statusOf(jobId) shouldBe if (action == "REQUEUE") "REQUEUED" else "DONE"
+                reprintCount(jobId) shouldBe if (action == "REQUEUE") 1L else 0L
+                attemptOutcomes(jobId) shouldBe listOf("TAKEN_OVER")
+            }
+        }
+    }
+
+    @Test
+    fun `인쇄 요청을 넘긴 작업도 다시 출력할 수 있고 재출력은 원본의 대기 순서로 나간다`() {
+        enter(standard(Occupation.TEACHER))
+        enter(standard(Occupation.TEACHER))
+        val station = createStation()
+        val claimed = claim(station).andExpect(status().isOk).json()
+        result(station, claimed, "SUBMITTED").andExpect(status().isNoContent)
+        mockMvc
+            .perform(get("$BASE/jobs").param("status", "SUBMITTED").header("Authorization", bearerOf(adminId)))
+            .andExpect(jsonPath("$.jobs.length()").value(1))
+            .andExpect(jsonPath("$.jobs[0].jobId").value(1))
+            .andExpect(jsonPath("$.jobs[0].status").value("SUBMITTED"))
+
+        // SUBMITTED는 이미 끝난 작업이라 DONE은 받지 않고, 직원이 본 상태와 다르면 409이다
+        resolve(1, "DONE", UUID.randomUUID()).andExpect(status().isConflict)
+        resolve(1, "REQUEUE", UUID.randomUUID(), "NEEDS_CHECK").andExpect(status().isConflict)
+        statusOf(1) shouldBe "SUBMITTED"
+        val key = UUID.randomUUID()
+        resolve(1, "REQUEUE", key, "SUBMITTED").andExpect(status().isNoContent)
+        // 같은 키 재요청은 상태가 바뀌었어도 204이다
+        resolve(1, "REQUEUE", key, "SUBMITTED").andExpect(status().isNoContent)
+        resolve(1, "REQUEUE", UUID.randomUUID()).andExpect(status().isConflict)
+        enter(standard(Occupation.TEACHER))
+
+        statusOf(1) shouldBe "REQUEUED"
+        jdbcTemplate.queryForObject(
+            "SELECT r.queued_at = o.queued_at FROM tb_badge_print_job r " +
+                "JOIN tb_badge_print_job o ON o.id = r.original_job_id WHERE r.id = 3",
+            Boolean::class.java,
+        ) shouldBe true
+        // 재출력(3)은 원본(1)의 자리라 그 뒤에 들어온 2, 4보다 먼저 나간다
+        val order =
+            (1..3).map {
+                val next = claim(station).andExpect(status().isOk).json()
+                result(station, next, "SUBMITTED").andExpect(status().isNoContent)
+                next["jobId"].asLong()
+            }
+        order shouldBe listOf(3L, 2L, 4L)
+        job(1)["currentJobId"].asLong() shouldBe 3L
+    }
+
+    @Test
+    fun `인쇄 요청 작업의 다시 출력을 여러 번 눌러도 새 작업은 하나다`() {
+        enter(standard(Occupation.TEACHER))
+        enter(standard(Occupation.TEACHER))
+        val station = createStation()
+        repeat(2) {
+            val claimed = claim(station).andExpect(status().isOk).json()
+            result(station, claimed, "SUBMITTED").andExpect(status().isNoContent)
+        }
+
+        // 더블클릭(같은 키)은 모두 204이고, 다른 화면에서 누른 다른 키는 하나만 204이다
+        val key = UUID.randomUUID()
+        val sameKey = concurrently { resolve(1, "REQUEUE", key, "SUBMITTED").andReturn().response.status }
+        val otherKeys = concurrently { resolve(2, "REQUEUE", UUID.randomUUID(), "SUBMITTED").andReturn().response.status }
+
+        sameKey.toSet() shouldBe setOf(204)
+        otherKeys.count { it == 204 } shouldBe 1
+        otherKeys.count { it == 409 } shouldBe THREADS - 1
+        reprintCount(1) shouldBe 1L
+        reprintCount(2) shouldBe 1L
+        jdbcTemplate.queryForList("SELECT status FROM tb_badge_print_job WHERE id IN (1, 2) ORDER BY id", String::class.java) shouldBe
+            listOf("REQUEUED", "REQUEUED")
+    }
+
+    @Test
+    fun `점유 시각은 DB 시계이고 출력대 연결 시각은 5초에 한 번만 쓴다`() {
+        val station = createStation()
+        jdbcTemplate.update("UPDATE tb_badge_print_station SET last_seen_at = last_seen_at - interval '2 seconds'")
+        val before = lastSeenAt()
+
+        claim(station).andExpect(status().isNoContent)
+        lastSeenAt() shouldBe before
+
+        jdbcTemplate.update("UPDATE tb_badge_print_station SET last_seen_at = last_seen_at - interval '4 seconds'")
+        claim(station).andExpect(status().isNoContent)
+        (lastSeenAt() > before) shouldBe true
+
+        enter(standard(Occupation.TEACHER))
+        claim(station).andExpect(status().isOk)
+        jdbcTemplate.queryForObject(
+            "SELECT abs(extract(epoch FROM claimed_at - (now() AT TIME ZONE 'Asia/Seoul'))) < 5 FROM tb_badge_print_job WHERE id = 1",
+            Boolean::class.java,
+        ) shouldBe true
     }
 
     @Test
@@ -639,6 +999,60 @@ class BadgePrintApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `같은 requestKey로 다시 등록하면 기존 출력대와 현재 세션을 주고 키가 없으면 매번 새로 만든다`() {
+        val key = UUID.randomUUID()
+        val created = createStationJson(requestKey = key, label = "입구")
+        val station = Station(UUID.fromString(created["stationId"].asString()), UUID.fromString(created["sessionId"].asString()))
+        val newSession = openSession(station)
+
+        val again = createStationJson(requestKey = key, label = "다른 이름")
+        again["stationId"].asString() shouldBe station.id.toString()
+        again["label"].asString() shouldBe "입구"
+        again["sessionId"].asString() shouldBe newSession.toString()
+
+        createStation()
+        createStation()
+        // 다른 박람회는 같은 키라도 따로 만든다
+        mockMvc
+            .perform(
+                post("/admin/badge-prints/$OTHER_EXPO/stations")
+                    .header("Authorization", bearerOf(adminId))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"requestKey":"$key"}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.label").value("출력대 1"))
+
+        val stationsPerExpo =
+            jdbcTemplate
+                .queryForList("SELECT expo_id FROM tb_badge_print_station", String::class.java)
+                .groupingBy { it }
+                .eachCount()
+        stationsPerExpo shouldBe mapOf(EXPO to 3, OTHER_EXPO to 1)
+    }
+
+    @Test
+    fun `같은 requestKey 동시 등록도 출력대는 하나다`() {
+        val key = UUID.randomUUID()
+        val start = CountDownLatch(1)
+        val responses =
+            (1..THREADS)
+                .map {
+                    executor.submit(
+                        Callable {
+                            start.await()
+                            createStationJson(requestKey = key)
+                        },
+                    )
+                }.also { start.countDown() }
+                .map { it.get(30, TimeUnit.SECONDS) }
+
+        responses.map { it["stationId"].asString() }.toSet() shouldHaveSize 1
+        responses.map { it["sessionId"].asString() }.toSet() shouldHaveSize 1
+        responses.map { it["label"].asString() }.toSet() shouldBe setOf("출력대 1")
+        count("tb_badge_print_station") shouldBe 1
+    }
+
+    @Test
     fun `출력대 이름을 주면 그 이름을 쓰고 없으면 등록 순서로 붙인다`() {
         mockMvc
             .perform(
@@ -724,6 +1138,28 @@ class BadgePrintApiTests : IntegrationTestSupport() {
             .let { jsonMapper.readTree(it.contentAsString) }
             .let { Station(UUID.fromString(it["stationId"].asString()), UUID.fromString(it["sessionId"].asString())) }
 
+    private fun createStationJson(
+        requestKey: UUID? = null,
+        label: String? = null,
+    ): JsonNode {
+        val fields = listOfNotNull(requestKey?.let { "\"requestKey\":\"$it\"" }, label?.let { "\"label\":\"$it\"" })
+        return mockMvc
+            .perform(
+                post("$BASE/stations")
+                    .header("Authorization", bearerOf(adminId))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(fields.joinToString(",", "{", "}")),
+            ).andExpect(status().isOk)
+            .json()
+    }
+
+    private fun openSession(station: Station): UUID =
+        mockMvc
+            .perform(post("$BASE/stations/${station.id}/sessions").header("Authorization", bearerOf(adminId)))
+            .andExpect(status().isOk)
+            .json()
+            .let { UUID.fromString(it["sessionId"].asString()) }
+
     private fun claim(
         station: Station,
         requestId: UUID = UUID.randomUUID(),
@@ -768,13 +1204,36 @@ class BadgePrintApiTests : IntegrationTestSupport() {
         jobId: Long,
         action: String,
         key: UUID,
+        expectedStatus: String? = null,
     ): ResultActions =
         mockMvc.perform(
             post("$BASE/jobs/$jobId/resolve")
                 .header("Authorization", bearerOf(adminId))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"action":"$action","requestKey":"$key"}"""),
+                .content(
+                    """{"action":"$action","requestKey":"$key"""" +
+                        (expectedStatus?.let { ""","expectedStatus":"$it"""" } ?: "") + "}",
+                ),
         )
+
+    private fun claimedJobOf(station: Station): Long? =
+        claim(station).andReturn().response.let {
+            if (it.status == 200) jsonMapper.readTree(it.contentAsString)["jobId"].asLong() else null
+        }
+
+    private fun <T> concurrently(action: () -> T): List<T> {
+        val start = CountDownLatch(1)
+        return (1..THREADS)
+            .map { executor.submit(Callable { start.await().let { action() } }) }
+            .also { start.countDown() }
+            .map { it.get(30, TimeUnit.SECONDS) }
+    }
+
+    private fun lastSeenAt(): LocalDateTime =
+        jdbcTemplate.queryForObject("SELECT last_seen_at FROM tb_badge_print_station", LocalDateTime::class.java)!!
+
+    private fun reprintCount(jobId: Long) =
+        jdbcTemplate.queryForObject("SELECT count(*) FROM tb_badge_print_job WHERE original_job_id = ?", Long::class.java, jobId)
 
     private fun job(jobId: Long): JsonNode =
         mockMvc

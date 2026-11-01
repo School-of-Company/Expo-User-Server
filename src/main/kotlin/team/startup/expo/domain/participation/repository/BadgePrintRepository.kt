@@ -52,6 +52,8 @@ data class BadgePrintAttempt(
     val outcome: BadgePrintAttemptOutcome?,
     val reason: String?,
     val finishedAt: LocalDateTime?,
+    val previousOutcome: BadgePrintAttemptOutcome?,
+    val previousFinishedAt: LocalDateTime?,
 )
 
 data class BadgePrintReprint(
@@ -59,15 +61,29 @@ data class BadgePrintReprint(
     val requestKey: UUID,
 )
 
-/** 명찰 출력 큐(`V26`). 잠그는 조회(`lock*`, [pickWaiting])는 트랜잭션 안에서 불러야 한다. 잠금 순서는 출력대 → 작업이다. */
+/**
+ * 명찰 출력 큐(`V26`, `V27`). 잠그는 조회(`lock*`, [pickWaiting])는 트랜잭션 안에서 불러야 한다. 잠금 순서는 출력대 → 작업이다.
+ *
+ * 큐의 시각(점유·만료·재시도·갱신·대기 순서)은 앱 서버가 아니라 DB 시계의 한국 시간이다(#246). 인스턴스마다 시계가 조금씩 달라도
+ * 한 인스턴스가 저장한 `claimed_at`을 다른 인스턴스의 만료가 같은 기준으로 판정한다. 컬럼은 시간대 없는 `TIMESTAMP`라
+ * `now() AT TIME ZONE 'Asia/Seoul'`로 기존 값(한국 시간)과 같은 의미를 지킨다.
+ */
 @Repository
 class BadgePrintRepository(
     private val jdbc: JdbcTemplate,
 ) {
     /**
+     * DB 시계의 지금(한국 시간). 트랜잭션 시작 시각이 아니라 부른 순간의 시각(`clock_timestamp()`)이라, 잠금을 기다린 뒤에
+     * 부르면 점유 시각이 잠금 순서와 같다.
+     */
+    fun dbNow(): LocalDateTime =
+        jdbc.queryForObject("SELECT clock_timestamp() AT TIME ZONE 'Asia/Seoul'", LocalDateTime::class.java)!!
+
+    /**
      * 자동 원본 작업을 저장한다. 같은 사람의 같은 방문일 작업이 이미 있으면 저장하지 않고 그 작업의 id를 `created = false`로
      * 돌려준다. 입장 트랜잭션 안에서 부른다. 동시에 같은 키를 저장하는 트랜잭션이 있으면 `ON CONFLICT`가 그쪽 커밋을 기다리고,
      * 이어지는 조회는 새 스냅숏(READ COMMITTED)이라 그 행을 본다. 그사이 박람회 삭제로 지워졌으면 `id`가 `null`이다.
+     * 대기 순서(`queued_at`)와 생성·갱신 시각은 입장 트랜잭션이 시작한 DB 시각이다.
      */
     fun insertAutoJob(
         expoId: String,
@@ -77,13 +93,12 @@ class BadgePrintRepository(
         subjectId: Long,
         name: String,
         school: String?,
-        now: LocalDateTime,
     ): BadgePrintAutoJob {
         val inserted =
             jdbc
                 .query(
                     "INSERT INTO tb_badge_print_job (expo_id, person_key, attendance_date, participation_type, subject_id, name, school, " +
-                        "status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'WAITING', ?, ?) " +
+                        "status, queued_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'WAITING', $DB_NOW, $DB_NOW, $DB_NOW) " +
                         "ON CONFLICT (expo_id, person_key, attendance_date) WHERE original_job_id IS NULL DO NOTHING RETURNING id",
                     idRow,
                     expoId,
@@ -93,8 +108,6 @@ class BadgePrintRepository(
                     subjectId,
                     name,
                     school,
-                    now,
-                    now,
                 ).singleOrNull()
         if (inserted != null) return BadgePrintAutoJob(inserted, created = true)
         val existing =
@@ -110,23 +123,35 @@ class BadgePrintRepository(
         return BadgePrintAutoJob(existing, created = false)
     }
 
+    /**
+     * 출력대를 저장하고 저장했으면 `true`다. 같은 박람회에 같은 [requestKey]의 출력대가 있으면 저장하지 않고 `false`다. 같은 키를
+     * 동시에 저장하는 트랜잭션이 있으면 `ON CONFLICT`가 그쪽 커밋을 기다리므로, 이어지는 [stationByRequestKey]는 새
+     * 스냅숏(READ COMMITTED)에서 그 행을 본다. [requestKey]가 `null`이면 항상 저장한다.
+     */
     fun insertStation(
         id: UUID,
         expoId: String,
         label: String,
         sessionId: UUID,
+        requestKey: UUID?,
         now: LocalDateTime,
-    ) {
+    ): Boolean =
         jdbc.update(
-            "INSERT INTO tb_badge_print_station (id, expo_id, label, session_id, last_seen_at, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO tb_badge_print_station (id, expo_id, label, session_id, request_key, last_seen_at, created_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (expo_id, request_key) WHERE request_key IS NOT NULL DO NOTHING",
             id,
             expoId,
             label,
             sessionId,
+            requestKey,
             now,
             now,
-        )
-    }
+        ) == 1
+
+    fun stationByRequestKey(
+        expoId: String,
+        requestKey: UUID,
+    ): BadgePrintStation? = jdbc.query("$STATION WHERE expo_id = ? AND request_key = ?", stationRow, expoId, requestKey).singleOrNull()
 
     fun countStations(expoId: String): Long =
         jdbc.queryForObject("SELECT count(*) FROM tb_badge_print_station WHERE expo_id = ?", Long::class.java, expoId)!!
@@ -199,7 +224,10 @@ class BadgePrintRepository(
         finishAttempt(requireNotNull(job.claimToken), outcome, null, now)
     }
 
-    /** [today]의 대기 작업 중 재시도 시각이 된 가장 오래된 것을 잠근다. 다른 출력대가 잡고 있는 행은 건너뛴다. */
+    /**
+     * [today]의 대기 작업 중 재시도 시각이 된 것을 대기 순서(`queued_at`, 같으면 `id`)로 하나 잠근다. 재출력 작업은 원본의 대기
+     * 순서를 이어받는다. 다른 출력대가 잡고 있는 행은 건너뛴다.
+     */
     fun pickWaiting(
         expoId: String,
         today: LocalDate,
@@ -208,7 +236,7 @@ class BadgePrintRepository(
         jdbc
             .query(
                 "$JOB WHERE expo_id = ? AND attendance_date = ? AND status = 'WAITING' " +
-                    "AND (next_attempt_at IS NULL OR next_attempt_at <= ?) ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED",
+                    "AND (next_attempt_at IS NULL OR next_attempt_at <= ?) ORDER BY queued_at, id LIMIT 1 FOR UPDATE SKIP LOCKED",
                 jobRow,
                 expoId,
                 today,
@@ -311,6 +339,26 @@ class BadgePrintRepository(
         )
     }
 
+    /**
+     * 결과 모름으로 닫힌 시도에 늦게 온 결과를 반영한다. 서버가 닫았던 사유·시각은 `previous_*`로 옮긴다. 결과 모름 시도가 아니면
+     * 아무것도 바꾸지 않는다. 작업 잠금 안에서 부른다.
+     */
+    fun finishLateAttempt(
+        claimToken: UUID,
+        outcome: BadgePrintAttemptOutcome,
+        reason: String?,
+        now: LocalDateTime,
+    ) {
+        jdbc.update(
+            "UPDATE tb_badge_print_attempt SET previous_outcome = outcome, previous_finished_at = finished_at, outcome = ?, reason = ?, " +
+                "finished_at = ? WHERE claim_token = ? AND outcome IN ('EXPIRED', 'TAKEN_OVER', 'ABANDONED')",
+            outcome.name,
+            reason,
+            now,
+            claimToken,
+        )
+    }
+
     fun updateJob(
         jobId: Long,
         status: BadgePrintJobStatus,
@@ -351,7 +399,10 @@ class BadgePrintRepository(
                 jobId,
             ).singleOrNull()
 
-    /** [originalId]를 복사한 새 대기 작업을 [today] 날짜로 만든다. 한 작업의 재출력은 하나뿐이다(`uk_badge_print_job_reprint`). */
+    /**
+     * [originalId]를 복사한 새 대기 작업을 [today] 날짜로 만든다. 한 작업의 재출력은 하나뿐이다(`uk_badge_print_job_reprint`).
+     * 대기 순서(`queued_at`)는 원본의 값이라, 오래 기다린 사람의 재출력이 그 뒤에 들어온 명찰보다 먼저 나간다(#246).
+     */
     fun insertReprint(
         originalId: Long,
         requestKey: UUID,
@@ -360,8 +411,8 @@ class BadgePrintRepository(
     ) {
         jdbc.update(
             "INSERT INTO tb_badge_print_job (expo_id, person_key, attendance_date, participation_type, subject_id, name, school, " +
-                "status, original_job_id, request_key, created_at, updated_at) " +
-                "SELECT expo_id, person_key, ?, participation_type, subject_id, name, school, 'WAITING', id, ?, ?, ? " +
+                "status, original_job_id, request_key, queued_at, created_at, updated_at) " +
+                "SELECT expo_id, person_key, ?, participation_type, subject_id, name, school, 'WAITING', id, ?, queued_at, ?, ? " +
                 "FROM tb_badge_print_job WHERE id = ?",
             today,
             requestKey,
@@ -414,6 +465,8 @@ class BadgePrintRepository(
             outcome = rs.getString("outcome")?.let(BadgePrintAttemptOutcome::valueOf),
             reason = rs.getString("reason"),
             finishedAt = rs.getTimestamp("finished_at")?.toLocalDateTime(),
+            previousOutcome = rs.getString("previous_outcome")?.let(BadgePrintAttemptOutcome::valueOf),
+            previousFinishedAt = rs.getTimestamp("previous_finished_at")?.toLocalDateTime(),
         )
 
     private val stationRow = RowMapper { rs, _ -> station(rs) }
@@ -425,9 +478,14 @@ class BadgePrintRepository(
         // 점유 만료 advisory lock 네임스페이스. 박람회 삭제(26), 참가자 등록(27~30)과 겹치지 않는다
         const val EXPIRY_LOCK_NAMESPACE = 31
 
+        /** SQL 안에서 쓰는 DB 시계의 지금(한국 시간, 트랜잭션 시작 시각). */
+        const val DB_NOW = "(now() AT TIME ZONE 'Asia/Seoul')"
+
         const val STATION = "SELECT id, label, session_id, paused, last_seen_at FROM tb_badge_print_station"
         const val JOB =
             "SELECT id, name, school, status, failures, claim_token, claim_request_id, updated_at FROM tb_badge_print_job"
-        const val ATTEMPT = "SELECT claim_token, job_id, station_id, claimed_at, outcome, reason, finished_at FROM tb_badge_print_attempt"
+        const val ATTEMPT =
+            "SELECT claim_token, job_id, station_id, claimed_at, outcome, reason, finished_at, previous_outcome, previous_finished_at " +
+                "FROM tb_badge_print_attempt"
     }
 }
