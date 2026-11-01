@@ -67,31 +67,36 @@ entry의 409는 중복뿐 아니라 FIELD projection 취소·세대·날짜 불�
 
 | 메서드·경로 | 요청 → 응답 |
 |---|---|
-| `POST /stations` | `{label?}`(본문 생략 가능) → `{stationId, label, sessionId}`. `label`이 없으면 `출력대 N` |
-| `GET /stations` | → `{stations:[{stationId, label, paused, lastSeenAt}]}` |
+| `POST /stations` | `{label?, requestKey?}`(본문 생략 가능) → `{stationId, label, sessionId}`. `label`이 없으면 `출력대 N`. 같은 박람회에서 같은 `requestKey`(UUID)로 다시 오면 기존 출력대와 그 현재 `sessionId`(User #245) |
+| `GET /stations` | → `{stations:[{stationId, label, paused, lastSeenAt}]}`. `lastSeenAt`은 claim·결과 보고 때 5초에 한 번만 갱신(User #246) |
 | `POST /stations/{stationId}/sessions` | → `{sessionId}`. 이전 세션은 무효, 이전 세션이 점유 중이던 작업은 `NEEDS_CHECK`(`TAKEN_OVER`) |
 | `PATCH /stations/{stationId}` | `{paused}` → 204. 일시정지 중 claim은 204, 점유 중 작업의 결과 보고는 받음 |
 | `POST /stations/{stationId}/claim` | `{sessionId, requestId?}` → 200 `{jobId, claimToken, name, school}` / 204 없음 / 409 이전 세션 |
-| `POST /jobs/{jobId}/result` | `{sessionId, claimToken, outcome: SUBMITTED\|FAILED_BEFORE_PRINT, reason?}` → 204 / 409 |
-| `GET /jobs?status=NEEDS_CHECK,FAILED` | → 오늘(KST) 작업 `{jobs:[{jobId, name, school, status, updatedAt}]}`. `status` 생략 시 `NEEDS_CHECK,FAILED` |
+| `POST /jobs/{jobId}/result` | `{sessionId, claimToken, outcome: SUBMITTED\|FAILED_BEFORE_PRINT, reason?}` → 204 / 409. 결과 모름으로 닫힌 점유의 늦은 보고는 아래 설명 참고 |
+| `GET /jobs?status=NEEDS_CHECK,FAILED` | → 오늘(KST) 작업 `{jobs:[{jobId, name, school, status, updatedAt}]}`. `status` 생략 시 `NEEDS_CHECK,FAILED`. 오늘 인쇄 요청 목록은 `status=SUBMITTED` |
 | `GET /jobs/{jobId}` | → `{jobId, currentJobId, status, station: {stationId, label} \| null}`. 아래 설명 참고 |
-| `GET /jobs/{jobId}/attempts` | → `{attempts:[{stationId, claimedAt, outcome, reason, finishedAt}]}` |
-| `POST /jobs/{jobId}/resolve` | `{action: REQUEUE\|DONE, requestKey}` → 204 / 409 |
+| `GET /jobs/{jobId}/attempts` | → `{attempts:[{stationId, claimedAt, outcome, reason, finishedAt, previousOutcome, previousFinishedAt}]}`. `previous*`는 늦은 보고를 반영한 시도에만 있음 |
+| `POST /jobs/{jobId}/resolve` | `{action: REQUEUE\|DONE, requestKey, expectedStatus?}` → 204 / 409 |
 
 상태는 `WAITING → CLAIMED → SUBMITTED`다. `SUBMITTED`는 출력 화면이 인쇄 요청을 브라우저에 넘겼다는 뜻이고 종이가 나왔다는 보장은 아니다.
 
-- claim은 오늘(KST) `WAITING` 중 재시도 시각이 된 가장 오래된 작업을 `FOR UPDATE SKIP LOCKED`로 점유한다. 지난 날짜 작업은 자동으로 주지 않는다. 출력대당 `CLAIMED`는 하나뿐이다(DB 부분 unique).
+- claim은 오늘(KST) `WAITING` 중 재시도 시각이 된 작업을 대기 순서(`queued_at`, 같으면 `id`)로 `FOR UPDATE SKIP LOCKED` 점유한다. `queued_at`은 자동 작업의 저장 시각이고 재출력 작업은 원본의 값을 이어받아, 재출력이 그 뒤에 들어온 명찰보다 먼저 나간다(User #246). 지난 날짜 작업은 자동으로 주지 않는다. 출력대당 `CLAIMED`는 하나뿐이다(DB 부분 unique).
 - `FAILED_BEFORE_PRINT`는 인쇄 호출 전 확정 실패만 보낸다. 1·2·3번째 실패 뒤 2·5·15초 후 다시 `WAITING`, 4번째 실패에서 `FAILED`다(최초 1회 + 재시도 3회).
 - 점유 후 30초 안에 결과가 없으면 `NEEDS_CHECK`(`EXPIRED`)다. claim 요청 때와 5초 주기 작업(`badge-print.sweeper.*`) 둘 다 처리한다. `NEEDS_CHECK`는 자동으로 다시 출력하지 않는다.
+- 큐의 시각(`claimed_at`, 만료 기준, `next_attempt_at`, `updated_at`, `queued_at`, 출력대 `last_seen_at`)과 "오늘"은 앱 서버가 아니라 DB 시계의 한국 시간(`now() AT TIME ZONE 'Asia/Seoul'`)이다. 인스턴스 시계가 어긋나도 만료 판정이 같다(User #246). 입장의 `attendance_date`는 지금처럼 입장 기준이다.
+- 기동 직후 만료 유예(User #246): 인스턴스가 요청을 받기 시작한 뒤 30초(`badge-print.expiry-grace-seconds`, 0이면 끔) 동안은 주기 만료와 claim 안의 만료가 점유를 닫지 않는다. 만료 기준을 `max(claimed_at, 기동 시각) + 30초`로 보는 것과 같고, 장애 동안 보고하지 못한 출력대가 먼저 결과를 보고할 수 있다. 기동 시각은 JVM 단조 시계로 재고 인스턴스마다 따로다(계속 떠 있던 인스턴스는 보고를 받을 수 있었으므로 그대로 만료한다).
+- 늦은 결과 보고(User #245): 결과 모름(`EXPIRED`·`TAKEN_OVER`·`ABANDONED`)으로 닫힌 시도도, 작업이 아직 그 점유(`claim_token`)의 `NEEDS_CHECK`이면(직원이 `DONE`·`REQUEUE`하지 않았고 다시 점유되지 않음) 출력대의 **현재** 세션으로 보낸 결과를 반영한다. `SUBMITTED`는 `SUBMITTED`로 닫고, `FAILED_BEFORE_PRINT`는 위 실패 규칙(2/5/15초 뒤 재대기, 4번째 `FAILED`)을 그대로 따른다. 시도의 `outcome`·`reason`·`finishedAt`은 보고값이 되고 서버가 닫았던 사유·시각은 `previousOutcome`·`previousFinishedAt`에 남는다. 그 밖(처리됐거나 다시 점유됨, 이미 다른 결과)은 409이고, 같은 결과 재전송은 반영 뒤에도 204다. 판단은 출력대 행 → 작업 행을 잠근 뒤 다시 읽은 값으로 한다.
 - `GET /jobs/{jobId}`의 `currentJobId`는 재출력을 따라간 가장 최신 작업(없으면 `jobId`)이고 `status`는 그 작업의 상태다. `station`은 그 작업이 `CLAIMED`·`SUBMITTED`일 때만 점유한 출력대이고, `WAITING`(재시도 대기 포함)·`NEEDS_CHECK`·`FAILED`·`DONE`·`REQUEUED`는 `null`이다. 재시도 대기 작업에도 지난 점유의 `station_id`가 남아 있으므로 출력대 유무가 아니라 상태로 판단한다. 다른 박람회의 작업은 404이고 이름·소속은 주지 않는다.
-- `REQUEUE`는 원본을 `REQUEUED`로 닫고 원본을 가리키는 새 `WAITING` 작업을 오늘 날짜로 만든다. 한 작업은 한 번만 재출력되고, 같은 `requestKey` 재요청은 204, 다른 키는 409다. `DONE`은 처리 완료로 닫는다. 둘 다 `NEEDS_CHECK`·`FAILED`만 처리한다.
+- `REQUEUE`는 원본을 `REQUEUED`로 닫고 원본을 가리키는 새 `WAITING` 작업을 오늘 날짜로 만든다. 한 작업은 한 번만 재출력되고, 같은 `requestKey` 재요청은 204, 다른 키는 409다. `NEEDS_CHECK`·`FAILED`와, 인쇄 요청 뒤 종이가 안 나온 `SUBMITTED`("안 나옴", Client #931)를 받는다. `DONE`은 처리 완료로 닫고 `NEEDS_CHECK`·`FAILED`만 받는다(`SUBMITTED`는 이미 끝난 작업).
+- `expectedStatus`는 직원이 화면에서 본 상태다. 보내면 작업 잠금 뒤 지금 상태가 다를 때 409다. 확인 필요 작업에 다시 출력을 누른 사이 늦은 `SUBMITTED` 보고가 반영되면, 보내지 않은 요청은 `SUBMITTED` 재출력으로 받아들여 두 장이 나올 수 있으므로 화면은 항상 보낸다.
 
 출력 화면(Client) 계약. 이미 인쇄했을 수 있는 작업을 다시 실행하지 않는 것이 목적이다.
 
 1. 화면을 열거나 새로고침할 때마다 `POST /sessions`로 새 `sessionId`를 받는다. 이전 화면이 쥐고 있던 작업은 서버가 `NEEDS_CHECK`로 돌린다.
 2. claim마다 새 `requestId`(UUID)를 만든다. 응답을 못 받았을 때만 **같은 `requestId`**로 다시 보낸다. 그러면 같은 작업·같은 `claimToken`이 온다. 이때 받은 작업은 아직 인쇄하지 않은 것이다.
 3. 받은 작업의 결과를 204로 확인받기 전에는 다음 claim을 보내지 않는다. 결과 응답을 못 받으면 같은 본문으로 다시 보낸다(같은 결과는 204). 결과 없이 새 `requestId`로 claim하면 서버는 이전 작업을 `NEEDS_CHECK`(`ABANDONED`)로 닫고 다음 작업을 준다.
-4. 결과 보고가 409면 그 작업은 서버가 이미 닫았다(세션 교체·30초 만료). 다시 인쇄하지 않는다. 관리자 목록에서 확인한다.
+4. 받은 작업마다 `print()`를 불렀는지 저장해 둔다. 새로고침·세션 교체·30초 만료로 보고하지 못했으면 새 세션으로 그 `claimToken`의 결과를 다시 보고한다(불렀으면 `SUBMITTED`, 부르기 전이면 `FAILED_BEFORE_PRINT`). 204면 반영된 것이다. 409면 그 작업은 이미 직원이 처리했거나 다시 점유됐다. 다시 인쇄하지 않는다. 관리자 목록에서 확인한다.
 5. 테스트 출력은 화면 안에서만 하고 큐 작업을 만들지 않는다. 기존 수동 "명찰 출력" 버튼은 그대로다.
+6. 출력대 등록은 등록 요청마다 `requestKey`(UUID)를 하나 만들어 보낸다. 더블클릭·재시도는 같은 키를 보내 출력대가 하나만 생긴다.
 
 박람회 삭제(`DELETE /internal/expos/{expoId}`)는 출력대·작업·시도 이력을 함께 지운다. 시도 이력에는 이름·소속을 남기지 않는다. 스캐너 노트북 6대와 출력 노트북 5대(11대)가 같은 관리자 계정으로 로그인하려면 `JWT_MAX_REFRESH_TOKENS`를 20으로 올려야 한다(기본 10).
