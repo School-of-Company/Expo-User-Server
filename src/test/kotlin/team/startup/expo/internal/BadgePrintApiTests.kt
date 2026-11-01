@@ -553,7 +553,7 @@ class BadgePrintApiTests : IntegrationTestSupport() {
             val start = CountDownLatch(1)
             val report = executor.submit(Callable { start.await().let { result(station, claimed, outcome).andReturn().response.status } })
             val sweep = executor.submit(Callable { start.await().let { badgePrintService.expireClaims() } })
-            val otherClaims = others.map { executor.submit(Callable { start.await().let { claimedJobOf(it) } }) }
+            val otherClaims = others.map { other -> executor.submit(Callable { start.await().let { claimedJobOf(other) } }) }
             start.countDown()
 
             // 만료가 먼저면 늦은 보고로, 보고가 먼저면 정상 보고로 반영된다. 어느 쪽이든 결과는 보고값이다

@@ -76,8 +76,7 @@ class BadgePrintRepository(
      * DB 시계의 지금(한국 시간). 트랜잭션 시작 시각이 아니라 부른 순간의 시각(`clock_timestamp()`)이라, 잠금을 기다린 뒤에
      * 부르면 점유 시각이 잠금 순서와 같다.
      */
-    fun dbNow(): LocalDateTime =
-        jdbc.queryForObject("SELECT clock_timestamp() AT TIME ZONE 'Asia/Seoul'", LocalDateTime::class.java)!!
+    fun dbNow(): LocalDateTime = jdbc.queryForObject("SELECT clock_timestamp() AT TIME ZONE 'Asia/Seoul'", LocalDateTime::class.java)!!
 
     /**
      * 자동 원본 작업을 저장한다. 같은 사람의 같은 방문일 작업이 이미 있으면 저장하지 않고 그 작업의 id를 `created = false`로
