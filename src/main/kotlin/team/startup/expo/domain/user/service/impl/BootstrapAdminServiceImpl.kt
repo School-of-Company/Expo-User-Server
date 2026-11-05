@@ -35,17 +35,16 @@ class BootstrapAdminServiceImpl(
             return false
         }
 
-        val candidate = adminRepository.findByNickname(nickname)
-        if (candidate == null) {
+        // 행을 잠그고 조회한 뒤 상태를 다시 확인한다
+        val admin = adminRepository.findByNicknameForUpdate(nickname)
+        if (admin == null) {
             log.warn("첫 관리자로 승인할 계정이 없습니다. 이 닉네임으로 가입한 뒤 다시 기동하세요: nickname={}", nickname)
             return false
         }
-        // 행을 잠근 뒤 상태를 다시 확인한다
-        val admin = adminRepository.findByIdForUpdate(requireNotNull(candidate.id)) ?: return false
         if (admin.status != Status.PENDING || adminRepository.existsByStatus(Status.ACCEPTED)) return false
 
+        // 트랜잭션 안의 영속 엔티티라 커밋할 때 변경이 반영된다
         admin.accept()
-        adminRepository.save(admin)
         log.info("승인된 관리자가 없어 첫 관리자로 승인했습니다: nickname={}", nickname)
         return true
     }

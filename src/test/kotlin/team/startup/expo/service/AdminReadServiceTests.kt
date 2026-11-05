@@ -5,45 +5,51 @@ import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import org.springframework.http.HttpStatus
-import team.startup.expo.domain.user.entity.Admin
 import team.startup.expo.domain.user.entity.Status
+import team.startup.expo.domain.user.repository.AdminProfileView
 import team.startup.expo.domain.user.repository.AdminRepository
+import team.startup.expo.domain.user.repository.AdminSummaryView
 import team.startup.expo.domain.user.service.impl.GetMyInformationServiceImpl
 import team.startup.expo.domain.user.service.impl.GetPendingAdminsServiceImpl
 import team.startup.expo.global.exception.ExpectedException
-import java.util.Optional
 
 class AdminReadServiceTests :
     BehaviorSpec({
-        fun admin(id: Long?) =
-            Admin(
-                id = id,
-                name = "홍길동",
-                nickname = "hong",
-                email = "hong@test.com",
-                password = "encoded",
-                phoneNumber = "01012345678",
-            )
+        fun profile() =
+            object : AdminProfileView {
+                override val name = "홍길동"
+                override val nickname = "hong"
+                override val email = "hong@test.com"
+            }
+
+        fun summary(id: Long) =
+            object : AdminSummaryView {
+                override val id = id
+                override val name = "홍길동"
+                override val nickname = "hong"
+                override val email = "hong@test.com"
+                override val phoneNumber = "01012345678"
+            }
 
         given("내 정보를 조회할 때") {
             val adminRepository = mockk<AdminRepository>()
             val service = GetMyInformationServiceImpl(adminRepository)
 
             `when`("관리자가 있으면") {
-                every { adminRepository.findById(1L) } returns Optional.of(admin(1L))
+                every { adminRepository.findProfileById(1L) } returns profile()
 
-                then("이름, 닉네임, 이메일만 돌려주고 비밀번호와 전화번호는 싣지 않는다") {
+                then("이름, 닉네임, 이메일만 돌려준다") {
                     val result = service.execute(1L)
 
                     result.name shouldBe "홍길동"
                     result.nickname shouldBe "hong"
                     result.email shouldBe "hong@test.com"
-                    result.toString().contains("encoded") shouldBe false
                 }
             }
             `when`("관리자가 없으면") {
-                every { adminRepository.findById(2L) } returns Optional.empty()
+                every { adminRepository.findProfileById(2L) } returns null
 
                 then("404이다") {
                     shouldThrow<ExpectedException> { service.execute(2L) }.status shouldBe HttpStatus.NOT_FOUND
@@ -56,18 +62,18 @@ class AdminReadServiceTests :
             val service = GetPendingAdminsServiceImpl(adminRepository)
 
             `when`("대기 중인 관리자가 있으면") {
-                every { adminRepository.findByStatus(Status.PENDING) } returns listOf(admin(1L), admin(2L))
+                every { adminRepository.findSummariesByStatus(Status.PENDING) } returns listOf(summary(1L), summary(2L))
 
                 then("PENDING만 조회해 id와 연락처를 담아 돌려준다") {
                     val result = service.execute()
 
                     result.map { it.id } shouldBe listOf(1L, 2L)
                     result[0].phoneNumber shouldBe "01012345678"
-                    result.none { it.toString().contains("encoded") } shouldBe true
+                    verify(exactly = 1) { adminRepository.findSummariesByStatus(Status.PENDING) }
                 }
             }
             `when`("대기 중인 관리자가 없으면") {
-                every { adminRepository.findByStatus(Status.PENDING) } returns emptyList()
+                every { adminRepository.findSummariesByStatus(Status.PENDING) } returns emptyList()
 
                 then("빈 목록이다") {
                     service.execute() shouldBe emptyList()

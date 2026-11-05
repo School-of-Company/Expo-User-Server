@@ -17,7 +17,10 @@ interface AdminRepository : JpaRepository<Admin, Long> {
 
     fun findByNickname(nickname: String): Admin?
 
-    fun findByStatus(status: Status): List<Admin>
+    /** 승인 대기 목록처럼 목록 응답만 필요할 때 엔티티 전체(비밀번호 해시 포함) 대신 필요한 필드만 읽는다. */
+    fun findSummariesByStatus(status: Status): List<AdminSummaryView>
+
+    fun findProfileById(id: Long): AdminProfileView?
 
     fun existsByStatus(status: Status): Boolean
 
@@ -29,5 +32,12 @@ interface AdminRepository : JpaRepository<Admin, Long> {
     @Query("select a from Admin a where a.id = :id")
     fun findByIdForUpdate(
         @Param("id") id: Long,
+    ): Admin?
+
+    /** [findByIdForUpdate]와 같게 행을 잠그고 닉네임으로 조회한다. 닉네임은 유일하다. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select a from Admin a where a.nickname = :nickname")
+    fun findByNicknameForUpdate(
+        @Param("nickname") nickname: String,
     ): Admin?
 }
