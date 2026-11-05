@@ -12,7 +12,8 @@ enum class BadgePrintResult {
 /**
  * `WAITING → CLAIMED → SUBMITTED`가 정상 흐름이다. `SUBMITTED`는 출력대가 인쇄 요청을 브라우저에 넘겼다는 뜻이지 종이가
  * 나왔다는 뜻은 아니다. 인쇄 전 확정 실패는 다시 `WAITING`(재시도 대기)이 되고, 재시도를 다 쓰면 `FAILED`가 된다.
- * 결과를 알 수 없는 점유는 `NEEDS_CHECK`이며 자동으로 다시 출력하지 않는다. `DONE`·`REQUEUED`는 관리자가 처리한 상태다.
+ * 결과를 알 수 없는 점유는 `NEEDS_CHECK`이며 자동으로 다시 출력하지 않는다. 다만 그 점유의 결과가 늦게 오면 반영한다(#245).
+ * `DONE`·`REQUEUED`는 관리자가 처리한 상태다.
  */
 enum class BadgePrintJobStatus {
     WAITING,
@@ -52,8 +53,11 @@ enum class BadgePrintAttemptOutcome {
     ABANDONED,
 }
 
-/** 관리자의 `NEEDS_CHECK`·`FAILED` 작업 처리. */
+/** 관리자의 작업 처리. */
 enum class BadgePrintResolveAction {
+    /** 다시 출력한다. `NEEDS_CHECK`·`FAILED`와, 인쇄 요청을 넘겼지만 종이가 안 나온 `SUBMITTED` 작업이다. */
     REQUEUE,
+
+    /** 처리 완료로 닫는다. `NEEDS_CHECK`·`FAILED`만이다. */
     DONE,
 }

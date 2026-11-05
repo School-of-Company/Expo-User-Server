@@ -5,6 +5,7 @@ import team.startup.expo.domain.participation.entity.BadgePrintJobStatus
 import java.time.LocalDateTime
 import java.util.UUID
 
+/** 같은 `requestKey`로 다시 등록하면 기존 출력대와 그 출력대의 현재 `sessionId`다. */
 data class BadgePrintStationResDto(
     val stationId: UUID,
     val label: String,
@@ -67,11 +68,17 @@ data class BadgePrintAttemptsResDto(
     val attempts: List<BadgePrintAttemptResDto>,
 )
 
-/** `outcome`이 없으면 아직 결과가 없는 점유다. */
+/**
+ * `outcome`이 없으면 아직 결과가 없는 점유다. `previousOutcome`·`previousFinishedAt`은 결과 모름으로 닫힌 뒤 늦게 온 결과를
+ * 반영한 시도에만 있고, 서버가 닫았던 사유(`EXPIRED`·`TAKEN_OVER`·`ABANDONED`)와 시각이다. 이때 `outcome`·`reason`·`finishedAt`은
+ * 늦게 온 보고의 값이다.
+ */
 data class BadgePrintAttemptResDto(
     val stationId: UUID,
     val claimedAt: LocalDateTime,
     val outcome: BadgePrintAttemptOutcome?,
     val reason: String?,
     val finishedAt: LocalDateTime?,
+    val previousOutcome: BadgePrintAttemptOutcome?,
+    val previousFinishedAt: LocalDateTime?,
 )
