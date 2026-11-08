@@ -52,11 +52,11 @@ class AdminManageTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `이미 승인된 관리자를 다시 승인해도 204이다`() {
+    fun `이미 승인된 관리자를 다시 승인하면 409이다`() {
         mockMvc
             .perform(
                 patch("/admin/$otherAcceptedAdminId").header("Authorization", bearerOf(acceptedAdminId)),
-            ).andExpect(status().isNoContent)
+            ).andExpect(status().isConflict)
 
         adminRepository.findById(otherAcceptedAdminId).get().status shouldBe Status.ACCEPTED
     }
@@ -140,5 +140,6 @@ class AdminManageTests : IntegrationTestSupport() {
         email = "$nickname@gsm.hs.kr",
         password = "encoded",
         phoneNumber = phoneNumber,
+        superAdmin = nickname == "accepted",
     )
 }

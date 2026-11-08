@@ -14,6 +14,11 @@ class GetMyInformationServiceImpl(
     @Transactional(readOnly = true)
     override fun execute(adminId: Long): GetMyInformationResDto {
         val profile = adminRepository.getProfileById(adminId)
-        return GetMyInformationResDto(name = profile.name, nickname = profile.nickname, email = profile.email)
+        return GetMyInformationResDto(
+            name = profile.name,
+            nickname = profile.nickname,
+            email = profile.email,
+            superAdmin = profile.superAdmin,
+        )
     }
 }

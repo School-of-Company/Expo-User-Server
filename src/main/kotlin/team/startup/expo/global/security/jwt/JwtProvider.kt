@@ -1,11 +1,13 @@
 package team.startup.expo.global.security.jwt
 
+import io.jsonwebtoken.Claims
 import io.jsonwebtoken.JwtException
 import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.SignatureException
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import team.startup.expo.domain.user.entity.Authority
+import team.startup.expo.global.security.StaffPrincipal
 import java.security.KeyFactory
 import java.security.PrivateKey
 import java.security.PublicKey
@@ -55,6 +57,39 @@ class JwtProvider(
 
     /** 서명이 맞고 만료되지 않았으며 RS256으로 서명된 토큰이면 `sub`의 관리자 id를, 아니면 null을 돌려준다. */
     fun verifyAdminId(token: String): Long? =
+        verifiedClaims(token)
+            ?.takeUnless { it[ROLE_CLAIM] == StaffPrincipal.AUTHORITY }
+            ?.subject
+            ?.toLongOrNull()
+            ?.takeIf { it > 0 }
+
+    fun generateStaffToken(principal: StaffPrincipal): IssuedToken {
+        val now = Instant.now()
+        val expiresAt = now.plus(JwtProperties.MAX_ACCESS_TOKEN_TTL)
+        val token =
+            Jwts
+                .builder()
+                .subject("staff:${principal.inviteId}")
+                .claim(ROLE_CLAIM, StaffPrincipal.AUTHORITY)
+                .claim("expoId", principal.expoId)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(expiresAt))
+                .signWith(privateKey, Jwts.SIG.RS256)
+                .compact()
+        return IssuedToken(token, LocalDateTime.ofInstant(expiresAt, ZoneOffset.UTC))
+    }
+
+    fun verifyStaff(token: String): StaffPrincipal? {
+        val claims = verifiedClaims(token) ?: return null
+        if (claims[ROLE_CLAIM] != StaffPrincipal.AUTHORITY) return null
+        val subject = claims.subject ?: return null
+        if (!subject.startsWith("staff:")) return null
+        val inviteId = subject.removePrefix("staff:").toLongOrNull()?.takeIf { it > 0 } ?: return null
+        val expoId = (claims["expoId"] as? String)?.takeIf { it.isNotBlank() } ?: return null
+        return StaffPrincipal(inviteId, expoId)
+    }
+
+    private fun verifiedClaims(token: String): Claims? =
         try {
             val jws =
                 Jwts
@@ -62,9 +97,7 @@ class JwtProvider(
                     .verifyWith(publicKey)
                     .build()
                     .parseSignedClaims(token)
-            jws.payload.subject
-                ?.toLongOrNull()
-                ?.takeIf { it > 0 && jws.header.algorithm == ALGORITHM }
+            jws.payload.takeIf { jws.header.algorithm == ALGORITHM }
         } catch (e: SignatureException) {
             // 키 교체 후 서명이 맞지 않는 경우를 운영에서 알아볼 수 있게 한다. 토큰 내용은 남기지 않는다
             log.warn("access token signature verification failed")
