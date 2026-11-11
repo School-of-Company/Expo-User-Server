@@ -240,6 +240,10 @@ class BadgePrintServiceImpl(
                     if (reprint.requestKey == reqDto.requestKey) return
                     throw ExpectedException(HttpStatus.CONFLICT, "이미 다시 대기열에 넣은 작업입니다.")
                 }
+                // 인쇄 요청을 넘긴 작업의 재출력은 직원이 SUBMITTED를 보고 누른 요청만 받는다. 생략한 구 요청이 늦은 보고 뒤에 와도 다시 찍지 않는다
+                if (job.status == BadgePrintJobStatus.SUBMITTED && reqDto.expectedStatus == null) {
+                    throw ExpectedException(HttpStatus.CONFLICT, "작업 상태가 바뀌었습니다. 목록을 새로 보세요.")
+                }
                 requireResolvable(job, reqDto.expectedStatus, REQUEUE_STATUSES)
                 badgePrintRepository.insertReprint(jobId, reqDto.requestKey, now.toLocalDate(), now)
                 badgePrintRepository.resolve(jobId, BadgePrintJobStatus.REQUEUED, adminId, now)

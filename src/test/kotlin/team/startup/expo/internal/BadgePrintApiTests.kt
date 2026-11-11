@@ -616,6 +616,25 @@ class BadgePrintApiTests : IntegrationTestSupport() {
     }
 
     @Test
+    fun `확인 필요를 본 직원이 늦은 SUBMITTED 뒤 expectedStatus 없이 다시 출력하면 409이고 재출력 작업을 만들지 않는다`() {
+        enter(standard(Occupation.TEACHER))
+        val station = createStation()
+        val claimed = claim(station).andExpect(status().isOk).json()
+        jdbcTemplate.update("UPDATE tb_badge_print_job SET claimed_at = claimed_at - interval '31 seconds' WHERE id = 1")
+        badgePrintService.expireClaims() shouldBe 1
+        statusOf(1) shouldBe "NEEDS_CHECK"
+        mockMvc
+            .perform(get("$BASE/jobs").param("status", "NEEDS_CHECK").header("Authorization", bearerOf(adminId)))
+            .andExpect(jsonPath("$.jobs[0].jobId").value(1))
+
+        result(station, claimed, "SUBMITTED").andExpect(status().isNoContent)
+        resolve(1, "REQUEUE", UUID.randomUUID()).andExpect(status().isConflict)
+
+        statusOf(1) shouldBe "SUBMITTED"
+        reprintCount(1) shouldBe 0L
+    }
+
+    @Test
     fun `인쇄 요청을 넘긴 작업도 다시 출력할 수 있고 재출력은 원본의 대기 순서로 나간다`() {
         enter(standard(Occupation.TEACHER))
         enter(standard(Occupation.TEACHER))
