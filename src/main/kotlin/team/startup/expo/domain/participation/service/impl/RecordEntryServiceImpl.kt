@@ -114,7 +114,6 @@ class RecordEntryServiceImpl(
                             participant.id!!,
                             participant.name,
                             participant.school,
-                            now,
                         )
                     } else {
                         null
@@ -154,7 +153,6 @@ class RecordEntryServiceImpl(
                         trainee.id!!,
                         trainee.name,
                         trainee.school,
-                        now,
                     )
                 traineeResponse(trainee).copy(badgePrint = badge.result, badgePrintJobId = badge.jobId)
             }
@@ -199,9 +197,8 @@ class RecordEntryServiceImpl(
         subjectId: Long,
         name: String,
         school: String?,
-        now: LocalDateTime,
     ): EnqueuedBadge {
-        val job = badgePrintRepository.insertAutoJob(expoId, personKey, attendanceDate, participationType, subjectId, name, school, now)
+        val job = badgePrintRepository.insertAutoJob(expoId, personKey, attendanceDate, participationType, subjectId, name, school)
         if (job.id == null) {
             // 같은 트랜잭션에서 충돌한 원본을 다시 못 찾는 경우는 그사이 박람회 삭제뿐이다. 입장은 막지 않고 식별자만 비운다
             log.warn("명찰 출력 원본 작업을 찾지 못 함: attendanceDate={}", attendanceDate)

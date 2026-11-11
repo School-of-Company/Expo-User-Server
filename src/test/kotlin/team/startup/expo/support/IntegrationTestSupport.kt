@@ -32,6 +32,8 @@ import java.util.Base64
         "qr-sms-sent.consumer.auto-startup=false",
         // 명찰 출력 점유 만료는 테스트가 직접 부른다. 주기 작업이 끼어들면 만료 시점이 흔들린다
         "badge-print.sweeper.enabled=false",
+        // 기동 직후 만료 유예는 BadgePrintExpiryGraceTests가 따로 본다. 통합 테스트는 컨텍스트가 뜨자마자 만료를 확인한다
+        "badge-print.expiry-grace-seconds=0",
     ],
 )
 @AutoConfigureMockMvc

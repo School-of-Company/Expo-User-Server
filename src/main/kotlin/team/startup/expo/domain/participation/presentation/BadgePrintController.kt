@@ -41,7 +41,13 @@ import java.util.UUID
 class BadgePrintController(
     private val badgePrintService: BadgePrintService,
 ) {
-    @Operation(summary = "출력대 등록", description = "새 출력대와 첫 세션을 만듭니다. label이 없으면 '출력대 N'입니다.")
+    @Operation(
+        summary = "출력대 등록",
+        description =
+            "새 출력대와 첫 세션을 만듭니다. label이 없으면 '출력대 N'입니다. 같은 박람회에서 같은 requestKey로 다시 보내면 새로 " +
+                "만들지 않고 기존 출력대의 stationId, label, 현재 sessionId를 줍니다(동시 요청도 하나만 생깁니다). requestKey가 없으면 " +
+                "매번 새 출력대입니다.",
+    )
     @PostMapping("/stations")
     fun createStation(
         @PathVariable("expo_id") expoId: String,
@@ -95,7 +101,9 @@ class BadgePrintController(
         summary = "출력 결과 보고",
         description =
             "SUBMITTED는 인쇄 요청을 넘겼다는 뜻입니다. FAILED_BEFORE_PRINT는 2/5/15초 뒤 다시 대기하고 네 번째 실패에서 FAILED입니다. " +
-                "같은 결과를 다시 보내면 204, 세션·토큰이 맞지 않거나 이미 다른 결과(만료 등)로 닫혔으면 409입니다.",
+                "결과 모름(EXPIRED·TAKEN_OVER·ABANDONED)으로 닫힌 점유도 작업이 아직 그 점유의 NEEDS_CHECK이면 결과를 반영합니다. " +
+                "세션은 출력대의 현재 세션이어야 합니다. 같은 결과를 다시 보내면 204, 세션·토큰이 맞지 않거나 직원이 이미 처리했거나 " +
+                "다시 점유된 작업, 이미 다른 결과로 닫힌 점유는 409입니다.",
     )
     @PostMapping("/jobs/{job_id}/result")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -105,7 +113,10 @@ class BadgePrintController(
         @Valid @RequestBody reqDto: ReportBadgePrintResultReqDto,
     ) = badgePrintService.reportResult(expoId, jobId, reqDto)
 
-    @Operation(summary = "오늘 작업 목록", description = "status를 주지 않으면 NEEDS_CHECK, FAILED입니다. 예: status=NEEDS_CHECK,FAILED")
+    @Operation(
+        summary = "오늘 작업 목록",
+        description = "오늘(DB 기준 한국 날짜) 작업입니다. status를 주지 않으면 NEEDS_CHECK, FAILED입니다. 예: status=SUBMITTED",
+    )
     @GetMapping("/jobs")
     fun getJobs(
         @PathVariable("expo_id") expoId: String,
@@ -133,10 +144,11 @@ class BadgePrintController(
     ): BadgePrintAttemptsResDto = badgePrintService.getAttempts(expoId, jobId)
 
     @Operation(
-        summary = "확인 필요·실패 작업 처리",
+        summary = "확인 필요·실패·인쇄 요청 작업 처리",
         description =
-            "REQUEUE는 원본을 가리키는 새 대기 작업을 만들고, DONE은 처리 완료로 닫습니다. 같은 requestKey로 다시 보내면 204이고, " +
-                "이미 다른 요청으로 처리됐으면 409입니다.",
+            "REQUEUE는 원본을 가리키는 새 대기 작업을 만들고(원본의 대기 순서를 이어받음), DONE은 처리 완료로 닫습니다. REQUEUE는 " +
+                "NEEDS_CHECK·FAILED와 종이가 안 나온 SUBMITTED, DONE은 NEEDS_CHECK·FAILED만 받습니다. 같은 requestKey로 다시 보내면 " +
+                "204이고, 이미 다른 요청으로 처리됐거나 expectedStatus가 지금 상태와 다르면 409입니다.",
     )
     @PostMapping("/jobs/{job_id}/resolve")
     @ResponseStatus(HttpStatus.NO_CONTENT)
