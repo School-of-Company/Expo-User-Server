@@ -8,8 +8,12 @@ import io.kotest.matchers.shouldNotBe
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.anyString
+import org.mockito.ArgumentMatchers.eq
+import org.mockito.Mockito.doNothing
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.MediaType
+import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -27,6 +31,7 @@ import team.startup.expo.domain.training.entity.Trainee
 import team.startup.expo.domain.training.repository.TraineeRepository
 import team.startup.expo.domain.user.entity.Admin
 import team.startup.expo.domain.user.repository.AdminRepository
+import team.startup.expo.global.client.expo.ExpoClient
 import team.startup.expo.support.IntegrationTestSupport
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
@@ -41,6 +46,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class BadgePrintApiTests : IntegrationTestSupport() {
+    @MockitoBean
+    private lateinit var expoClient: ExpoClient
+
     @Autowired
     private lateinit var mockMvc: MockMvc
 
@@ -68,6 +76,7 @@ class BadgePrintApiTests : IntegrationTestSupport() {
 
     @BeforeEach
     fun setUp() {
+        doNothing().`when`(expoClient).requireAdminAccess(anyString(), anyString(), eq("CHECKIN"))
         jdbcTemplate.execute(
             "TRUNCATE TABLE tb_badge_print_attempt, tb_badge_print_job, tb_badge_print_station, tb_standard_participant_participation, " +
                 "tb_trainee_participation, tb_trainee, tb_standard_participant, tb_expo_deletion RESTART IDENTITY CASCADE",

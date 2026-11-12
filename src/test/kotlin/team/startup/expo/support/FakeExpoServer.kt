@@ -65,17 +65,21 @@ object FakeExpoServer {
     }
 
     private fun handle(exchange: HttpExchange) {
-        requests.incrementAndGet()
+        if (!exchange.requestURI.path.endsWith("/admin-access")) requests.incrementAndGet()
         val token = exchange.requestHeaders.getFirst("X-Internal-Token")
         lastToken = token
         val path = exchange.requestURI.path.removePrefix("/internal/expo/")
-        val expoId = path.substringBefore("/preregister-sessions/")
+        val expoId = path.substringBefore("/preregister-sessions/").substringBefore("/admin-access")
         val sessionId = path.substringAfter("/preregister-sessions/", "").takeIf { it.isNotEmpty() }?.toLongOrNull()
         val period = periods[expoId]
         val (status, body) =
             when {
                 token != TOKEN -> {
                     401 to """{"status":401,"message":"인증이 필요합니다."}"""
+                }
+
+                path.endsWith("/admin-access") && period != null -> {
+                    200 to """{"permission":"APPLICATION_READ","policy":"GLOBAL_ADMIN_APPLICATION_READ_V1","role":"GLOBAL_ADMIN"}"""
                 }
 
                 failureStatus != null -> {

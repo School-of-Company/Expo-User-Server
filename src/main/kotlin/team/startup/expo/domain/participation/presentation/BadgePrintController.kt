@@ -32,6 +32,7 @@ import team.startup.expo.domain.participation.presentation.dto.response.BadgePri
 import team.startup.expo.domain.participation.presentation.dto.response.BadgePrintStationsResDto
 import team.startup.expo.domain.participation.service.BadgePrintService
 import team.startup.expo.global.security.AdminPrincipal
+import team.startup.expo.global.security.StaffPrincipal
 import java.util.UUID
 
 @Tag(name = "명찰 자동 출력(관리자)", description = "출력대 등록·세션, 작업 claim·결과 보고, 확인 필요 작업 처리")
@@ -155,7 +156,16 @@ class BadgePrintController(
     fun resolve(
         @PathVariable("expo_id") expoId: String,
         @PathVariable("job_id") jobId: Long,
-        @AuthenticationPrincipal principal: AdminPrincipal,
+        @AuthenticationPrincipal principal: Any,
         @Valid @RequestBody reqDto: ResolveBadgePrintJobReqDto,
-    ) = badgePrintService.resolve(expoId, jobId, principal.id, reqDto)
+    ) = badgePrintService.resolve(
+        expoId,
+        jobId,
+        when (principal) {
+            is AdminPrincipal -> principal.id
+            is StaffPrincipal -> principal.inviteId
+            else -> error("Unsupported badge print principal")
+        },
+        reqDto,
+    )
 }

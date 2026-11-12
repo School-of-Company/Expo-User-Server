@@ -37,6 +37,7 @@ class AdminReadTests : IntegrationTestSupport() {
             .andExpect(jsonPath("$.name").value("관리자"))
             .andExpect(jsonPath("$.nickname").value("accepted"))
             .andExpect(jsonPath("$.email").value("accepted@gsm.hs.kr"))
+            .andExpect(jsonPath("$.superAdmin").value(true))
             .andExpect(jsonPath("$.password").doesNotExist())
             .andExpect(jsonPath("$.phoneNumber").doesNotExist())
     }
@@ -89,5 +90,6 @@ class AdminReadTests : IntegrationTestSupport() {
         email = "$nickname@gsm.hs.kr",
         password = "encoded",
         phoneNumber = phoneNumber,
+        superAdmin = nickname == "accepted",
     )
 }
