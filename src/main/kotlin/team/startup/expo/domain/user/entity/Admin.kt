@@ -27,6 +27,8 @@ class Admin(
     val phoneNumber: String,
     authority: Authority = Authority.ROLE_STANDARD,
     status: Status = Status.PENDING,
+    @field:Column(name = "super_admin", nullable = false)
+    val superAdmin: Boolean = false,
 ) {
     @field:Enumerated(EnumType.STRING)
     @field:Column(nullable = false, length = 20)

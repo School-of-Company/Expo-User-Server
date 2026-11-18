@@ -7,6 +7,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.filter.OncePerRequestFilter
+import team.startup.expo.domain.user.entity.Authority
 import team.startup.expo.domain.user.repository.AdminRepository
 import team.startup.expo.global.security.jwt.JwtProvider
 
@@ -32,11 +33,24 @@ class AccessTokenAuthenticationFilter(
         response: HttpServletResponse,
         filterChain: FilterChain,
     ) {
-        request
-            .getHeader(AUTHORIZATION_HEADER)
-            ?.takeIf { it.startsWith(BEARER_PREFIX) }
-            ?.removePrefix(BEARER_PREFIX)
-            ?.trim()
+        val token =
+            request
+                .getHeader(AUTHORIZATION_HEADER)
+                ?.takeIf { it.startsWith(BEARER_PREFIX) }
+                ?.removePrefix(BEARER_PREFIX)
+                ?.trim()
+        val staff = token?.let(jwtProvider::verifyStaff)
+        if (staff != null) {
+            SecurityContextHolder.getContext().authentication =
+                UsernamePasswordAuthenticationToken(
+                    staff,
+                    null,
+                    listOf(SimpleGrantedAuthority(StaffPrincipal.AUTHORITY)),
+                )
+            filterChain.doFilter(request, response)
+            return
+        }
+        token
             ?.let(jwtProvider::verifyAdminId)
             ?.let { adminRepository.findById(it).orElse(null) }
             ?.let { admin ->
@@ -44,7 +58,12 @@ class AccessTokenAuthenticationFilter(
                     UsernamePasswordAuthenticationToken(
                         AdminPrincipal(requireNotNull(admin.id), admin.authority),
                         null,
-                        listOf(SimpleGrantedAuthority(admin.authority.name)),
+                        buildList {
+                            add(SimpleGrantedAuthority(admin.authority.name))
+                            if (admin.superAdmin && admin.authority == Authority.ROLE_ADMIN) {
+                                add(SimpleGrantedAuthority("SUPER_ADMIN"))
+                            }
+                        },
                     )
             }
         filterChain.doFilter(request, response)

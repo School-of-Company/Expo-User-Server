@@ -22,6 +22,7 @@ class AdminReadServiceTests :
                 override val name = "홍길동"
                 override val nickname = "hong"
                 override val email = "hong@test.com"
+                override val superAdmin = true
             }
 
         fun summary(id: Long) =
@@ -46,6 +47,7 @@ class AdminReadServiceTests :
                     result.name shouldBe "홍길동"
                     result.nickname shouldBe "hong"
                     result.email shouldBe "hong@test.com"
+                    result.superAdmin shouldBe true
                 }
             }
             `when`("관리자가 없으면") {

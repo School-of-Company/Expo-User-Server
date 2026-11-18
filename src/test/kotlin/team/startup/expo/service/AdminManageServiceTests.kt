@@ -90,6 +90,13 @@ class AdminManageServiceTests :
             val accepted = admin(3L, Status.ACCEPTED)
             every { adminRepository.findByIdForUpdate(3L) } returns accepted
 
+            `when`("다시 승인하면") {
+                then("409이다") {
+                    shouldThrow<ExpectedException> { AcceptAdminServiceImpl(adminRepository).execute(3L) }.status shouldBe
+                        HttpStatus.CONFLICT
+                }
+            }
+
             `when`("거절하면") {
                 then("409이고 승인된 계정을 삭제하지 않는다") {
                     val error = shouldThrow<ExpectedException> { RefuseAdminServiceImpl(adminRepository).execute(3L) }
