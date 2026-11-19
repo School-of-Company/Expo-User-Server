@@ -35,11 +35,12 @@ class RegistrationIdempotency(
         body: Any,
         action: () -> Registration,
     ): Registration {
+        // 기록을 읽어 돌려주기만 하는 재시도는 삭제 트리거를 타지 않는다. 삭제와 겹치면 곧 사라질 참가자 ID를 돌려주게 되므로
+        // 요청 기록을 읽기 전에 삭제를 기다리고 삭제 기록을 확인한다. 삭제 lock이 요청 키 lock보다 먼저다.
+        // 요청 키가 없어도 먼저 확인해, Expo에서 이미 사라진 박람회가 기능 설정 조회의 404가 아니라 삭제 409가 되게 한다
+        expoDeletionGuard.requireNotDeleted(expoId)
         if (requestId == null) return action()
 
-        // 기록을 읽어 돌려주기만 하는 재시도는 삭제 트리거를 타지 않는다. 삭제와 겹치면 곧 사라질 참가자 ID를 돌려주게 되므로
-        // 요청 기록을 읽기 전에 삭제를 기다리고 삭제 기록을 확인한다. 삭제 lock이 요청 키 lock보다 먼저다
-        expoDeletionGuard.requireNotDeleted(expoId)
         registrationLock.lockRequest(requestId)
         val fingerprint = fingerprint(participationType, body)
         registrationRequestRepository.findById(requestId).orElse(null)?.let {

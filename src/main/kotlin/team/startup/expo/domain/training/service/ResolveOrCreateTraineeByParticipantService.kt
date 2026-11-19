@@ -2,7 +2,12 @@ package team.startup.expo.domain.training.service
 
 import team.startup.expo.domain.training.presentation.dto.request.ResolveOrCreateTraineeByParticipantReqDto
 import team.startup.expo.domain.training.presentation.dto.response.ResolveOrCreateTraineeByParticipantResDto
+import team.startup.expo.global.client.expo.ExpoFeatures
 
 interface ResolveOrCreateTraineeByParticipantService {
-    fun execute(reqDto: ResolveOrCreateTraineeByParticipantReqDto): ResolveOrCreateTraineeByParticipantResDto
+    /** [features]는 트랜잭션 밖에서 읽은 기능 설정이다. 이미 있는 연수자를 돌려줄 때는 검사하지 않는다. */
+    fun execute(
+        reqDto: ResolveOrCreateTraineeByParticipantReqDto,
+        features: ExpoFeatures,
+    ): ResolveOrCreateTraineeByParticipantResDto
 }

@@ -19,6 +19,7 @@ import team.startup.expo.domain.participation.repository.StandardParticipantRepo
 import team.startup.expo.domain.training.entity.ApplicationType
 import team.startup.expo.domain.training.entity.Trainee
 import team.startup.expo.domain.training.repository.TraineeRepository
+import team.startup.expo.support.FakeExpoServer
 import team.startup.expo.support.IntegrationTestSupport
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -43,6 +44,8 @@ class LegacyTraineeAttributionApiTests : IntegrationTestSupport() {
 
     @BeforeEach
     fun setUp() {
+        FakeExpoServer.reset()
+        FakeExpoServer.register(EXPO, OTHER_EXPO)
         jdbcTemplate.execute(
             "TRUNCATE TABLE tb_expo_deletion, tb_trainee, tb_standard_participant, tb_admin RESTART IDENTITY CASCADE",
         )

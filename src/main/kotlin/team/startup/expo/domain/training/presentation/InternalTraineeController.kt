@@ -28,6 +28,7 @@ import team.startup.expo.domain.training.service.RegisterTraineeService
 import team.startup.expo.domain.training.service.ResolveOrCreateTraineeByParticipantService
 import team.startup.expo.domain.training.service.ResolveOrCreateTraineeService
 import team.startup.expo.domain.training.service.ResolveTraineeService
+import team.startup.expo.global.client.expo.ExpoPeriodReader
 
 /**
  * 서비스 간 호출 전용이다. `X-Internal-Token`이 필요하며 gateway에 라우팅하지 않는다.
@@ -44,6 +45,7 @@ class InternalTraineeController(
     private val resolveOrCreateTraineeService: ResolveOrCreateTraineeService,
     private val resolveOrCreateTraineeByParticipantService: ResolveOrCreateTraineeByParticipantService,
     private val linkTraineeParticipantService: LinkTraineeParticipantService,
+    private val expoPeriodReader: ExpoPeriodReader,
 ) {
     @Operation(summary = "연수자 id 조회", description = "박람회 id와 연수 번호로 연수자 id를 찾습니다. 없으면 404, 같은 번호의 연수자가 여럿이면 409입니다.")
     @PostMapping("/resolve")
@@ -59,33 +61,40 @@ class InternalTraineeController(
 
     @Operation(
         summary = "연수자 등록",
-        description = "사전 등록은 연수 번호나 전화번호가 같은 연수자가, 현장 등록은 전화번호가 같은 연수자나 일반 참가자가 이미 있으면 409입니다.",
+        description =
+            "사전 등록은 연수 번호나 전화번호가 같은 연수자가, 현장 등록은 전화번호가 같은 연수자나 일반 참가자가 이미 있으면 409입니다. " +
+                "새로 처리하는 등록은 구분의 등록 기능(PRE_REGISTRATION/FIELD_REGISTRATION)이 꺼져 있으면 409(code FEATURE_DISABLED)입니다. " +
+                "기능 설정을 읽을 수 없으면 503, 없는 박람회는 404입니다.",
     )
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     fun createTrainee(
         @Valid @RequestBody reqDto: CreateTraineeReqDto,
-    ): CreateTraineeResDto = registerTraineeService.execute(reqDto)
+    ): CreateTraineeResDto = registerTraineeService.execute(reqDto, expoPeriodReader.readFeatures(reqDto.expoId))
 
     @Operation(
         summary = "연수자 조회 또는 생성",
-        description = "박람회 id와 전화번호로 연수자를 찾아 있으면 그대로 돌려주고(created=false, 요청 값으로 덮어쓰지 않음) 없으면 사전 등록으로 만듭니다(created=true).",
+        description =
+            "박람회 id와 전화번호로 연수자를 찾아 있으면 그대로 돌려주고(created=false, 요청 값으로 덮어쓰지 않음) 없으면 사전 등록으로 만듭니다(created=true). " +
+                "새로 만들 때 TRAINING_PROGRAM이 꺼져 있으면 409(code FEATURE_DISABLED)입니다. 기능 설정을 읽을 수 없으면 503, 없는 박람회는 404입니다.",
     )
     @PostMapping("/resolve-or-create")
     fun resolveOrCreateTrainee(
         @Valid @RequestBody reqDto: ResolveOrCreateTraineeReqDto,
-    ): ResolveOrCreateTraineeResDto = resolveOrCreateTraineeService.execute(reqDto)
+    ): ResolveOrCreateTraineeResDto = resolveOrCreateTraineeService.execute(reqDto, expoPeriodReader.readFeatures(reqDto.expoId))
 
     @Operation(
         summary = "사전등록 참가자에 이어진 연수자 조회 또는 생성",
         description =
             "참가자에 이어진 연수자가 있으면 그대로 돌려주고(created=false, 요청 값으로 덮어쓰지 않음) 없으면 한 번 만들어 잇습니다(created=true). " +
-                "참가자가 없거나 다른 박람회의 참가자면 404, 삭제 중인 박람회면 409입니다.",
+                "참가자가 없거나 다른 박람회의 참가자면 404, 삭제 중인 박람회면 409입니다. " +
+                "새로 만들 때 TRAINING_PROGRAM이 꺼져 있으면 409(code FEATURE_DISABLED)입니다. 기능 설정을 읽을 수 없으면 503, 없는 박람회는 404입니다.",
     )
     @PostMapping("/resolve-or-create-by-participant")
     fun resolveOrCreateTraineeByParticipant(
         @Valid @RequestBody reqDto: ResolveOrCreateTraineeByParticipantReqDto,
-    ): ResolveOrCreateTraineeByParticipantResDto = resolveOrCreateTraineeByParticipantService.execute(reqDto)
+    ): ResolveOrCreateTraineeByParticipantResDto =
+        resolveOrCreateTraineeByParticipantService.execute(reqDto, expoPeriodReader.readFeatures(reqDto.expoId))
 
     @Operation(
         summary = "레거시 연수자를 확인된 참가자에 연결",

@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import team.startup.expo.domain.participation.service.RegistrationOutboxPublisher
+import team.startup.expo.support.FakeExpoServer
 import team.startup.expo.support.IntegrationTestSupport
 import team.startup.expo.support.SharedKafka
 import tools.jackson.databind.json.JsonMapper
@@ -36,6 +37,8 @@ class RegistrationOutboxRelayTests : IntegrationTestSupport() {
 
     @BeforeEach
     fun setUp() {
+        FakeExpoServer.reset()
+        FakeExpoServer.register(EXPO)
         jdbcTemplate.execute(
             "TRUNCATE TABLE tb_expo_deletion, tb_registration_request, tb_registration_outbox, tb_trainee, tb_standard_participant " +
                 "RESTART IDENTITY CASCADE",

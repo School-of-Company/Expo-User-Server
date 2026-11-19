@@ -55,6 +55,7 @@ import team.startup.expo.domain.participation.service.ResolveStandardParticipant
 import team.startup.expo.domain.participation.service.ResolveTraineeByParticipantService
 import team.startup.expo.domain.participation.service.SelectManagedParticipantsService
 import team.startup.expo.domain.participation.service.VerifyStandardParticipantService
+import team.startup.expo.global.client.expo.ExpoPeriodReader
 
 /**
  * 서비스 간 호출 전용이다. `X-Internal-Token`이 필요하며 gateway에 라우팅하지 않는다.
@@ -80,6 +81,7 @@ class InternalParticipantController(
     private val getCancellationStatusService: GetCancellationStatusService,
     private val getAdminCancellationStatusService: GetAdminCancellationStatusService,
     private val getRegistrationStatusService: GetRegistrationStatusService,
+    private val expoPeriodReader: ExpoPeriodReader,
 ) {
     @Operation(summary = "일반 참가자 id 조회", description = "박람회 id와 전화번호로 일반 참가자 id를 찾습니다. 없으면 404입니다.")
     @PostMapping("/standard-participants/resolve")
@@ -123,13 +125,15 @@ class InternalParticipantController(
             "새로 만들면 201, 같은 번호가 이미 있으면 기존 참가자로 200입니다. 새 동행자 없는 재신청은 발송 횟수와 무관하게 200이며 " +
                 "기존 QR을 쓰고 문자 이벤트를 만들지 않습니다. 누적 5명(대표자 포함)을 넘으면 409이며, releasedParticipantIds로 보낸 취소된 동행자는 이 인원에서 뺍니다. " +
                 "replaceRepresentative가 true이고 대표자가 있으면 대표자를 이번 신청으로 바꾸고 일행 전체에 문자를 보냅니다. " +
-                "같은 requestId의 재시도는 처음의 결과를 그대로 돌려주고, 다른 내용에 쓰면 409입니다.",
+                "같은 requestId의 재시도는 처음의 결과를 그대로 돌려주고, 다른 내용에 쓰면 409입니다. " +
+                "새로 처리하는 등록은 구분의 등록 기능(PRE_REGISTRATION/FIELD_REGISTRATION)과, 동행자가 있으면 COMPANION_REGISTRATION이 " +
+                "꺼져 있을 때 409(code FEATURE_DISABLED)입니다. 기능 설정을 읽을 수 없으면 503, 없는 박람회는 404입니다.",
     )
     @PostMapping("/standard-participants")
     fun createStandardParticipant(
         @Valid @RequestBody reqDto: CreateStandardParticipantReqDto,
     ): ResponseEntity<CreateStandardParticipantResDto> {
-        val result = registerStandardParticipantService.execute(reqDto)
+        val result = registerStandardParticipantService.execute(reqDto, expoPeriodReader.readFeatures(reqDto.expoId))
         return ResponseEntity.status(if (result.created) HttpStatus.CREATED else HttpStatus.OK).body(result)
     }
 

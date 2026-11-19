@@ -9,6 +9,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import team.startup.expo.support.FakeExpoServer
 import team.startup.expo.support.IntegrationTestSupport
 
 /** 등록 API가 참가자 저장과 같은 트랜잭션에서 아웃박스 이벤트를 남기는지 확인한다. 발행은 [RegistrationOutboxRelayTests]에서 본다. */
@@ -18,6 +19,8 @@ class RegistrationOutboxApiTests : IntegrationTestSupport() {
 
     @BeforeEach
     fun setUp() {
+        FakeExpoServer.reset()
+        FakeExpoServer.register(EXPO)
         jdbcTemplate.execute(
             "TRUNCATE TABLE tb_expo_deletion, tb_registration_request, tb_registration_outbox, tb_trainee, tb_standard_participant " +
                 "RESTART IDENTITY CASCADE",

@@ -11,6 +11,7 @@ import team.startup.expo.domain.training.presentation.dto.request.CreateTraineeR
 import team.startup.expo.domain.training.presentation.dto.response.CreateTraineeResDto
 import team.startup.expo.domain.training.service.CreateTraineeService
 import team.startup.expo.domain.training.service.RegisterTraineeService
+import team.startup.expo.global.client.expo.ExpoFeatures
 
 /**
  * 연수자 등록에 요청 멱등(`requestId`)과 아웃박스 이벤트를 더한다. 저장은 [CreateTraineeService]가 하고, 요청 기록과
@@ -18,6 +19,9 @@ import team.startup.expo.domain.training.service.RegisterTraineeService
  *
  * 등록 완료 이벤트는 현장 등록(`FIELD`)에만 만든다. 사전 등록(`PRE`)은 QR 문자를 보내지 않는다.
  * 같은 `requestId`의 재시도는 이벤트를 새로 만들지 않는다.
+ *
+ * 새로 처리하는 등록은 그 구분의 등록 기능(PRE는 `PRE_REGISTRATION`, FIELD는 `FIELD_REGISTRATION`)이 켜져 있어야 한다. 꺼져 있으면 409다.
+ * 이미 성공한 `requestId`의 재시도는 기능을 끈 뒤에도 처음 결과를 돌려준다.
  */
 @Service
 class RegisterTraineeServiceImpl(
@@ -26,7 +30,10 @@ class RegisterTraineeServiceImpl(
     private val registrationOutboxWriter: RegistrationOutboxWriter,
 ) : RegisterTraineeService {
     @Transactional
-    override fun execute(reqDto: CreateTraineeReqDto): CreateTraineeResDto {
+    override fun execute(
+        reqDto: CreateTraineeReqDto,
+        features: ExpoFeatures,
+    ): CreateTraineeResDto {
         val registration =
             registrationIdempotency.execute(
                 requestId = reqDto.requestId,
@@ -34,6 +41,7 @@ class RegisterTraineeServiceImpl(
                 expoId = reqDto.expoId,
                 body = reqDto.copy(requestId = null),
             ) {
+                features.require(reqDto.applicationType.registrationFeature)
                 val created = createTraineeService.execute(reqDto)
                 if (reqDto.applicationType == ApplicationType.FIELD) {
                     registrationOutboxWriter.registered(reqDto.expoId, ParticipationType.TRAINEE, created.traineeId, created.phoneNumber)

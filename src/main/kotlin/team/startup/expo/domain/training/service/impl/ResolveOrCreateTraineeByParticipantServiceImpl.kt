@@ -12,6 +12,8 @@ import team.startup.expo.domain.training.presentation.dto.request.ResolveOrCreat
 import team.startup.expo.domain.training.presentation.dto.response.ResolveOrCreateTraineeByParticipantResDto
 import team.startup.expo.domain.training.repository.TraineeRepository
 import team.startup.expo.domain.training.service.ResolveOrCreateTraineeByParticipantService
+import team.startup.expo.global.client.expo.ExpoFeature
+import team.startup.expo.global.client.expo.ExpoFeatures
 import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.util.ConstraintViolations
 import java.time.LocalDateTime
@@ -26,6 +28,8 @@ import java.time.LocalDateTime
  * 아이디를 고치는 일은 이 호출의 범위가 아니다. 채우기는 같은 참가자 lock 안에서 `training_id IS NULL`일 때만 한다.
  * 박람회 삭제 lock, 참가자 lock 순서로 잡아 삭제와 동시 최초 호출을 직렬화하고, 유일 제약(참가자당 연수자 하나)은 마지막
  * 안전망이다. 이름과 개인정보 동의는 참가자에서 가져온다.
+ *
+ * 연수 신청 흐름이라 새로 만들 때만 `TRAINING_PROGRAM`이 켜져 있어야 한다(꺼져 있으면 409). 이미 이어진 연수자는 그대로 돌려준다.
  */
 @Service
 class ResolveOrCreateTraineeByParticipantServiceImpl(
@@ -35,7 +39,10 @@ class ResolveOrCreateTraineeByParticipantServiceImpl(
     private val registrationLock: ParticipantRegistrationLock,
 ) : ResolveOrCreateTraineeByParticipantService {
     @Transactional
-    override fun execute(reqDto: ResolveOrCreateTraineeByParticipantReqDto): ResolveOrCreateTraineeByParticipantResDto {
+    override fun execute(
+        reqDto: ResolveOrCreateTraineeByParticipantReqDto,
+        features: ExpoFeatures,
+    ): ResolveOrCreateTraineeByParticipantResDto {
         val participantId = requireNotNull(reqDto.participantId)
         // 이미 이어진 연수자를 돌려주는 경로도 삭제 중인 박람회의 곧 사라질 ID를 주지 않도록 가장 먼저 확인한다
         expoDeletionGuard.requireNotDeleted(reqDto.expoId)
@@ -50,6 +57,7 @@ class ResolveOrCreateTraineeByParticipantServiceImpl(
             return ResolveOrCreateTraineeByParticipantResDto(traineeId, created = false)
         }
 
+        features.require(ExpoFeature.TRAINING_PROGRAM)
         // 동행자는 번호가 없어 문자를 대표자 번호로 보낸다(입장 기록 응답과 같은 규칙)
         val notificationPhoneNumber =
             participant.phoneNumber

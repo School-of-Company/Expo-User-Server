@@ -22,7 +22,10 @@ import team.startup.expo.domain.participation.service.RegistrationOutboxWriter
 import team.startup.expo.domain.participation.service.RepresentativeFinder
 import team.startup.expo.domain.participation.service.impl.FieldVisitServiceImpl
 import team.startup.expo.domain.training.entity.ApplicationType
+import team.startup.expo.global.client.expo.ExpoFeature
+import team.startup.expo.global.client.expo.ExpoFeatures
 import team.startup.expo.global.exception.ExpectedException
+import team.startup.expo.support.expoFeatures
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
 import java.time.LocalDate
@@ -109,6 +112,13 @@ class FieldVisitServiceTests :
                 }
             }
 
+            var features = expoFeatures()
+
+            fun create(
+                expoId: String,
+                body: CreateFieldVisitParticipantsReqDto,
+            ) = service.create(expoId, body, features)
+
             private fun reserved(person: StandardParticipant): Boolean =
                 person.representativeId == null ||
                     projections.values.any { it.participantId == person.id && it.status == FieldVisitStatus.ACTIVE } ||
@@ -180,8 +190,8 @@ class FieldVisitServiceTests :
                                     },
                             )
                         }
-                    val result = f.service.create(EXPO, body)
-                    f.service.create(EXPO, body) shouldBe result
+                    val result = f.create(EXPO, body)
+                    f.create(EXPO, body) shouldBe result
                     result.forEachIndexed { i, mapping ->
                         val saved = f.rows.getValue(mapping.participantId)
                         saved.informationJson shouldBe """{"q1":"answer-$i"}"""
@@ -196,7 +206,7 @@ class FieldVisitServiceTests :
                         body.copy(questions = json.readTree("[]")),
                         body.copy(participants = body.participants.map { it.copy(informationJson = "{}") }),
                     ).forEach { changed ->
-                        shouldThrow<ExpectedException> { f.service.create(EXPO, changed) }.status shouldBe HttpStatus.CONFLICT
+                        shouldThrow<ExpectedException> { f.create(EXPO, changed) }.status shouldBe HttpStatus.CONFLICT
                     }
                 }
             }
@@ -210,7 +220,7 @@ class FieldVisitServiceTests :
                         }
                     listOf(invalidAnswer, request().copy(questions = json.readTree("{}")), request().copy(questions = json.readTree("[1]")))
                         .forEach { invalid ->
-                            shouldThrow<ExpectedException> { f.service.create(EXPO, invalid) }.status shouldBe HttpStatus.BAD_REQUEST
+                            shouldThrow<ExpectedException> { f.create(EXPO, invalid) }.status shouldBe HttpStatus.BAD_REQUEST
                         }
                     verify(exactly = 0) { f.participants.saveAndFlush(any<StandardParticipant>()) }
                     verify(exactly = 0) { f.outbox.registered(any(), any(), any(), any(), any()) }
@@ -219,8 +229,8 @@ class FieldVisitServiceTests :
             `when`("응답이 유실되어 같은 키로 다시 요청하면") {
                 then("첫 mapping을 재현하고 한 번만 생성하고 문자 이벤트를 만든다") {
                     val f = Fixture()
-                    val first = f.service.create(EXPO, request())
-                    f.service.create(EXPO, request()) shouldBe first
+                    val first = f.create(EXPO, request())
+                    f.create(EXPO, request()) shouldBe first
                     first.map { it.clientReference } shouldBe listOf("client-0", "client-1")
                     first.map { it.participantId }.distinct().size shouldBe 2
                     f.rows[1]!!.representativeId shouldBe null
@@ -232,10 +242,10 @@ class FieldVisitServiceTests :
             `when`("같은 키의 payload가 바뀌거나 pending을 다른 키로 우회하면") {
                 then("409이고 추가 저장과 이벤트가 없다") {
                     val f = Fixture()
-                    f.service.create(EXPO, request())
-                    shouldThrow<ExpectedException> { f.service.create(EXPO, request(names = listOf("다른사람"))) }.status shouldBe
+                    f.create(EXPO, request())
+                    shouldThrow<ExpectedException> { f.create(EXPO, request(names = listOf("다른사람"))) }.status shouldBe
                         HttpStatus.CONFLICT
-                    shouldThrow<ExpectedException> { f.service.create(EXPO, request("another")) }.status shouldBe HttpStatus.CONFLICT
+                    shouldThrow<ExpectedException> { f.create(EXPO, request("another")) }.status shouldBe HttpStatus.CONFLICT
                     f.rows.size shouldBe 2
                     verify(exactly = 1) { f.outbox.registered(any(), any(), any(), any(), any()) }
                 }
@@ -244,7 +254,7 @@ class FieldVisitServiceTests :
                 then("부분 생성 없이 400이다") {
                     val f = Fixture()
                     val body = request().let { it.copy(participants = listOf(it.participants.first(), it.participants.first())) }
-                    shouldThrow<ExpectedException> { f.service.create(EXPO, body) }.status shouldBe HttpStatus.BAD_REQUEST
+                    shouldThrow<ExpectedException> { f.create(EXPO, body) }.status shouldBe HttpStatus.BAD_REQUEST
                     f.rows.size shouldBe 0
                 }
             }
@@ -253,12 +263,66 @@ class FieldVisitServiceTests :
                     val f = Fixture()
                     val owner = f.add(10)
                     val code = owner.code
-                    val response = f.service.create(EXPO, request(names = listOf(owner.name)))
+                    val response = f.create(EXPO, request(names = listOf(owner.name)))
                     response.single().participantId shouldBe 11L
                     f.rows[11]!!.representativeId shouldBe 10L
                     owner.applicationType shouldBe ApplicationType.PRE
                     owner.code shouldBe code
                     owner.name shouldBe "기존10"
+                }
+            }
+        }
+
+        given("박람회 기능 설정") {
+            `when`("FIELD_REGISTRATION이 꺼져 있으면") {
+                then("409 FEATURE_DISABLED이고 참가자와 이벤트를 남기지 않는다") {
+                    val f = Fixture()
+                    f.features = expoFeatures(ExpoFeature.FIELD_REGISTRATION)
+                    val error = shouldThrow<ExpectedException> { f.create(EXPO, request(names = listOf("혼자"))) }
+                    error.status shouldBe HttpStatus.CONFLICT
+                    error.code shouldBe "FEATURE_DISABLED"
+                    f.rows.size shouldBe 0
+                    f.creations.size shouldBe 0
+                    verify(exactly = 0) { f.outbox.registered(any(), any(), any(), any(), any()) }
+                }
+            }
+            `when`("COMPANION_REGISTRATION만 꺼져 있으면") {
+                then("대표자 혼자는 만들고, 동행자가 있거나 기존 대표자에 더하는 요청은 409다") {
+                    val f = Fixture()
+                    f.features = expoFeatures(ExpoFeature.COMPANION_REGISTRATION)
+                    shouldThrow<ExpectedException> { f.create(EXPO, request()) }.status shouldBe HttpStatus.CONFLICT
+                    f.rows.size shouldBe 0
+                    f.create(EXPO, request("solo", listOf("혼자"))).single().participantId shouldBe 1L
+                    shouldThrow<ExpectedException> { f.create(EXPO, request("more", listOf("동행"))) }.status shouldBe HttpStatus.CONFLICT
+                    f.rows.size shouldBe 1
+                }
+            }
+            `when`("기능 응답에 키가 없으면") {
+                then("허용하지 않고 503이다") {
+                    val f = Fixture()
+                    f.features = ExpoFeatures(emptyMap())
+                    shouldThrow<ExpectedException> { f.create(EXPO, request()) }.status shouldBe HttpStatus.SERVICE_UNAVAILABLE
+                    f.rows.size shouldBe 0
+                }
+            }
+            `when`("이미 성공한 requestId를 기능을 끈 뒤 다시 보내면") {
+                then("처음 결과를 돌려주고 새로 저장하지 않는다") {
+                    val f = Fixture()
+                    val first = f.create(EXPO, request())
+                    f.features = expoFeatures(ExpoFeature.FIELD_REGISTRATION, ExpoFeature.COMPANION_REGISTRATION)
+                    f.create(EXPO, request()) shouldBe first
+                    f.rows.size shouldBe 2
+                    verify(exactly = 1) { f.outbox.registered(any(), any(), any(), any(), any()) }
+                }
+            }
+            `when`("FIELD_REGISTRATION이 꺼져도 방문 상태 projection은") {
+                then("기능 설정 없이 그대로 반영한다") {
+                    val f = Fixture()
+                    f.features = expoFeatures(ExpoFeature.FIELD_REGISTRATION)
+                    f.add(1)
+                    val id = f.project(1)
+                    f.project(1, id, status = FieldVisitStatus.CANCELLED)
+                    f.projections[id]!!.status shouldBe FieldVisitStatus.CANCELLED
                 }
             }
         }
@@ -277,7 +341,7 @@ class FieldVisitServiceTests :
                     f.projections.size shouldBe 10
                     f.rows.mapValues { it.value.code } shouldBe codes
                     f.rows.values.all { it.applicationType == ApplicationType.PRE } shouldBe true
-                    shouldThrow<ExpectedException> { f.service.create(EXPO, request(names = listOf("여섯째"))) }.status shouldBe
+                    shouldThrow<ExpectedException> { f.create(EXPO, request(names = listOf("여섯째"))) }.status shouldBe
                         HttpStatus.CONFLICT
                     verify(exactly = 0) { f.outbox.registered(any(), any(), any(), any(), any()) }
                 }
@@ -322,9 +386,9 @@ class FieldVisitServiceTests :
                     val first = f.project(5)
                     val second = f.project(5, date = DATE.plusDays(1))
                     f.project(5, first, status = FieldVisitStatus.CANCELLED)
-                    shouldThrow<ExpectedException> { f.service.create(EXPO, request(names = listOf("신규"))) }
+                    shouldThrow<ExpectedException> { f.create(EXPO, request(names = listOf("신규"))) }
                     f.project(5, second, date = DATE.plusDays(1), status = FieldVisitStatus.CANCELLED)
-                    f.service
+                    f
                         .create(EXPO, request(names = listOf("신규")))
                         .single()
                         .participantId shouldBe 6L

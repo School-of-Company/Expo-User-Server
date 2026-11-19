@@ -20,6 +20,8 @@ import team.startup.expo.domain.participation.presentation.dto.response.EntrySta
 import team.startup.expo.domain.participation.presentation.dto.response.FieldVisitParticipantResDto
 import team.startup.expo.domain.participation.service.FieldVisitService
 import team.startup.expo.domain.participation.service.GetEntryStatusService
+import team.startup.expo.global.client.expo.ExpoPeriodReader
+import team.startup.expo.support.expoFeatures
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
 import java.time.LocalDate
@@ -29,10 +31,11 @@ class FieldVisitHttpFakeProviderTests :
     BehaviorSpec({
         val visits = mockk<FieldVisitService>()
         val entries = mockk<GetEntryStatusService>()
+        val expo = mockk<ExpoPeriodReader> { every { readFeatures("expo") } returns expoFeatures() }
         val json = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
         val mvc =
             MockMvcBuilders
-                .standaloneSetup(InternalFieldVisitController(visits, entries))
+                .standaloneSetup(InternalFieldVisitController(visits, entries, expo))
                 .setMessageConverters(JacksonJsonHttpMessageConverter(json))
                 .build()
         val date = LocalDate.of(2026, 10, 22)
@@ -40,7 +43,7 @@ class FieldVisitHttpFakeProviderTests :
         given("DB와 실제 SMS 없이 제공하는 User HTTP 계약") {
             `when`("신규 참가자 생성 응답을 받으면") {
                 then("200 배열에 clientReference와 participantId만 정확히 대응한다") {
-                    every { visits.create("expo", any()) } returns
+                    every { visits.create("expo", any(), any()) } returns
                         listOf(
                             FieldVisitParticipantResDto(10, "client-b"),
                             FieldVisitParticipantResDto(12, "client-a"),
@@ -78,6 +81,7 @@ class FieldVisitHttpFakeProviderTests :
                                     it.participants[0].informationJson == """{"q1":"개별 답변"}""" &&
                                     it.participants[1].informationJson == "{}"
                             },
+                            any(),
                         )
                     }
                 }

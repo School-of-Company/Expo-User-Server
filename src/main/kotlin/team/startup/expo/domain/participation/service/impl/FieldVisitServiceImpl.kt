@@ -18,6 +18,8 @@ import team.startup.expo.domain.participation.service.RegisteredParticipant
 import team.startup.expo.domain.participation.service.RegistrationOutboxWriter
 import team.startup.expo.domain.participation.service.RepresentativeFinder
 import team.startup.expo.domain.training.entity.ApplicationType
+import team.startup.expo.global.client.expo.ExpoFeature
+import team.startup.expo.global.client.expo.ExpoFeatures
 import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.util.InformationJson
 import team.startup.expo.global.util.PhoneNumbers
@@ -43,6 +45,7 @@ class FieldVisitServiceImpl(
     override fun create(
         expoId: String,
         body: CreateFieldVisitParticipantsReqDto,
+        features: ExpoFeatures,
     ): List<FieldVisitParticipantResDto> {
         deletionGuard.requireNotDeleted(expoId)
         locks.lockRequest("field-create:$expoId:${body.requestId}")
@@ -63,6 +66,9 @@ class FieldVisitServiceImpl(
         body.participants.forEach { InformationJson.requireValid(it.informationJson) }
         locks.lockPhone(expoId, PhoneNumbers.digitsOnly(body.phoneNumber))
         var representative = representatives.find(expoId, body.phoneNumber)
+        // 새 참가자 생성은 현장등록이다. 대표자가 이미 있으면 모두, 없으면 첫 사람 뒤의 사람이 동행자다
+        features.require(ExpoFeature.FIELD_REGISTRATION)
+        if (body.participants.size > (if (representative == null) 1 else 0)) features.require(ExpoFeature.COMPANION_REGISTRATION)
         if (representative != null && visits.hasPending(representative.id!!)) {
             throw conflict("완료되지 않은 신규 참가자 생성 요청을 같은 요청 키로 복구해야 합니다.")
         }

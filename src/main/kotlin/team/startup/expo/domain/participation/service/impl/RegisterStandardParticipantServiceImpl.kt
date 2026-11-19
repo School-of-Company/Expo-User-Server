@@ -10,6 +10,7 @@ import team.startup.expo.domain.participation.service.RegisterStandardParticipan
 import team.startup.expo.domain.participation.service.Registration
 import team.startup.expo.domain.participation.service.RegistrationIdempotency
 import team.startup.expo.domain.participation.service.RegistrationOutboxWriter
+import team.startup.expo.global.client.expo.ExpoFeatures
 
 /**
  * 일반 참가자 등록에 요청 멱등(`requestId`)과 아웃박스 이벤트를 더한다. 저장은 [CreateStandardParticipantService]가
@@ -18,6 +19,8 @@ import team.startup.expo.domain.participation.service.RegistrationOutboxWriter
  * 등록이 성공하면 등록 완료 이벤트(QR 문자)를 만든다. 다만 새 동행자 없이 다시 신청한 경우는 성공으로 답하되
  * 이벤트를 만들지 않는다. 새로 만든 경우에는
  * Expo의 신청 인원 집계를 재처리할 이벤트도 만든다. 같은 `requestId`의 재시도는 이벤트를 새로 만들지 않는다.
+ *
+ * 기능 설정([ExpoFeatures])은 새로 처리하는 등록에만 검사한다. 기능을 끈 뒤에도 이미 성공한 `requestId`의 재시도는 처음 결과를 그대로 돌려준다.
  */
 @Service
 class RegisterStandardParticipantServiceImpl(
@@ -26,7 +29,10 @@ class RegisterStandardParticipantServiceImpl(
     private val registrationOutboxWriter: RegistrationOutboxWriter,
 ) : RegisterStandardParticipantService {
     @Transactional
-    override fun execute(reqDto: CreateStandardParticipantReqDto): CreateStandardParticipantResDto {
+    override fun execute(
+        reqDto: CreateStandardParticipantReqDto,
+        features: ExpoFeatures,
+    ): CreateStandardParticipantResDto {
         val registration =
             registrationIdempotency.execute(
                 requestId = reqDto.requestId,
@@ -34,7 +40,7 @@ class RegisterStandardParticipantServiceImpl(
                 expoId = reqDto.expoId,
                 body = reqDto.copy(requestId = null),
             ) {
-                val created = createStandardParticipantService.execute(reqDto)
+                val created = createStandardParticipantService.execute(reqDto, features)
                 // 새 동행자 없는 재신청은 기존 QR을 그대로 쓰므로 문자 이벤트를 만들지 않는다
                 if (!created.smsSkipped) {
                     registrationOutboxWriter.registered(

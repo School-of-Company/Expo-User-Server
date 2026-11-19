@@ -12,6 +12,8 @@ import team.startup.expo.domain.training.presentation.dto.request.ResolveOrCreat
 import team.startup.expo.domain.training.presentation.dto.response.ResolveOrCreateTraineeResDto
 import team.startup.expo.domain.training.repository.TraineeRepository
 import team.startup.expo.domain.training.service.ResolveOrCreateTraineeService
+import team.startup.expo.global.client.expo.ExpoFeature
+import team.startup.expo.global.client.expo.ExpoFeatures
 import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.util.ConstraintViolations
 import team.startup.expo.global.util.InformationJson
@@ -28,6 +30,8 @@ import java.time.LocalDateTime
  * 다른 번호에 같은 연수 번호가 와도 새로 만든다. 이렇게 같은 연수 번호가 둘 생기면 연수 번호로 찾는 `/internal/trainees/resolve`는
  * 하나로 특정할 수 없어 409로 실패한다. 이 정책은 Expo 담당자와 합의가 필요한 열린 결정이다(`#42`). 같은 요청을 다시 보내면(Application 신청이 실패해 재시도하는 경우)
  * 같은 `traineeId`를 돌려준다. 같은 번호의 동시 요청은 [ParticipantRegistrationLock]으로 직렬화해 하나만 만든다.
+ *
+ * 연수 신청 흐름이라 새로 만들 때만 `TRAINING_PROGRAM`이 켜져 있어야 한다(꺼져 있으면 409). 이미 있는 연수자는 그대로 돌려준다.
  */
 @Service
 class ResolveOrCreateTraineeServiceImpl(
@@ -36,7 +40,10 @@ class ResolveOrCreateTraineeServiceImpl(
     private val expoDeletionGuard: ExpoDeletionGuard,
 ) : ResolveOrCreateTraineeService {
     @Transactional
-    override fun execute(reqDto: ResolveOrCreateTraineeReqDto): ResolveOrCreateTraineeResDto {
+    override fun execute(
+        reqDto: ResolveOrCreateTraineeReqDto,
+        features: ExpoFeatures,
+    ): ResolveOrCreateTraineeResDto {
         InformationJson.requireValid(reqDto.informationJson)
         QuestionSnapshot.errorOf(reqDto.questions)?.let { throw ExpectedException(HttpStatus.BAD_REQUEST, it) }
         val digits = PhoneNumbers.digitsOnly(reqDto.phoneNumber)
@@ -50,6 +57,7 @@ class ResolveOrCreateTraineeServiceImpl(
                     it.phoneNumber
                 }
         if (existing != null) return ResolveOrCreateTraineeResDto(existing.id!!, created = false)
+        features.require(ExpoFeature.TRAINING_PROGRAM)
 
         val saved =
             try {

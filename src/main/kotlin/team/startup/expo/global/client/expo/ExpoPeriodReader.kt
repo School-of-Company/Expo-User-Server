@@ -18,6 +18,7 @@ import java.time.format.DateTimeParseException
  * 박람회 id를 반복해서 조회해도 회로가 열리지 않게 하기 위해서다. 시간 제한은 Feign의 연결·읽기 제한으로 건다.
  *
  * 프로젝션이 켜져 있으면 먼저 로컬 프로젝션([ExpoProjectionReader])을 읽고, 프로젝션에 없는 박람회만 Expo를 부른다.
+ * 기능 설정([readFeatures])은 프로젝션을 거치지 않고 항상 Expo를 부른다. 프로젝션이 늦어 꺼진 기능을 허용하면 안 되기 때문이다.
  */
 @Component
 class ExpoPeriodReader(
@@ -29,6 +30,37 @@ class ExpoPeriodReader(
 
     fun find(expoId: String): ExpoPeriod? {
         expoProjectionReader.findPeriod(expoId)?.let { return it.period }
+        return call(expoId)?.let(::toPeriod)
+    }
+
+    /**
+     * 신규 쓰기 검사용 기능 설정을 Expo에서 읽는다. DB 잠금·트랜잭션 밖에서 불러야 한다. 없는 박람회는 404이고,
+     * 호출 실패와 `features`가 없거나 해석할 수 없는 응답은 기본값으로 대신하지 않고 503이다. 둘 다 바로 던지지 않고
+     * [ExpoFeatures.require]에서 던진다.
+     */
+    fun readFeatures(expoId: String): ExpoFeatures =
+        try {
+            ExpoFeatures(effectiveFeatures(expoId))
+        } catch (e: ExpectedException) {
+            ExpoFeatures(emptyMap(), e)
+        }
+
+    private fun effectiveFeatures(expoId: String): Map<String, Boolean> {
+        val response = call(expoId) ?: throw ExpectedException(HttpStatus.NOT_FOUND, "박람회를 찾지 못 했습니다.")
+        return response.features?.takeIf { it.isArray }?.associate { item ->
+            val key = item.get("key")
+            val enabled = item.get("effectiveEnabled")
+            if (key == null || !key.isString || enabled == null || !enabled.isBoolean) throw unparsableFeatures()
+            key.stringValue() to enabled.booleanValue()
+        } ?: throw unparsableFeatures()
+    }
+
+    private fun unparsableFeatures(): ExpectedException {
+        log.error("expo service returned unparsable features")
+        return ExpoFeatures.unavailable()
+    }
+
+    private fun call(expoId: String): ExpoPeriodResDto? {
         val lookup =
             try {
                 // Resilience4j는 null을 돌려주는 공급자를 받지 못하므로 "박람회 없음"도 값으로 감싼다
@@ -38,7 +70,7 @@ class ExpoPeriodReader(
                 log.warn("expo service call failed: {}", e.javaClass.simpleName)
                 throw ExpectedException(HttpStatus.SERVICE_UNAVAILABLE, "박람회 정보를 가져올 수 없습니다.")
             }
-        return lookup.response?.let(::toPeriod)
+        return lookup.response
     }
 
     private data class Lookup(

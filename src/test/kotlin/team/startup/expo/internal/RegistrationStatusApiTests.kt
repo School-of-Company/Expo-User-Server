@@ -9,6 +9,7 @@ import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import team.startup.expo.support.FakeExpoServer
 import team.startup.expo.support.IntegrationTestSupport
 
 class RegistrationStatusApiTests : IntegrationTestSupport() {
@@ -17,6 +18,8 @@ class RegistrationStatusApiTests : IntegrationTestSupport() {
 
     @BeforeEach
     fun setUp() {
+        FakeExpoServer.reset()
+        FakeExpoServer.register(EXPO, OTHER_EXPO)
         jdbcTemplate.execute(
             "TRUNCATE TABLE tb_expo_deletion, tb_registration_request, tb_registration_cancellation, tb_registration_outbox, " +
                 "tb_trainee, tb_standard_participant RESTART IDENTITY CASCADE",

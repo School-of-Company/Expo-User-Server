@@ -17,6 +17,7 @@ import team.startup.expo.domain.training.entity.Trainee
 import team.startup.expo.domain.training.repository.TraineeRepository
 import team.startup.expo.domain.user.entity.Admin
 import team.startup.expo.domain.user.repository.AdminRepository
+import team.startup.expo.support.FakeExpoServer
 import team.startup.expo.support.IntegrationTestSupport
 import java.time.LocalDateTime
 
@@ -41,6 +42,8 @@ class InternalParticipantApiTests : IntegrationTestSupport() {
 
     @BeforeEach
     fun setUp() {
+        FakeExpoServer.reset()
+        FakeExpoServer.register(EXPO_A, EXPO_B, EXPO_C)
         jdbcTemplate.execute("TRUNCATE TABLE tb_trainee, tb_standard_participant, tb_admin RESTART IDENTITY CASCADE")
         standard1 = saveStandard(EXPO_A, PHONE_1, "홍길동")
         standard2 = saveStandard(EXPO_A, PHONE_2, "김영희")

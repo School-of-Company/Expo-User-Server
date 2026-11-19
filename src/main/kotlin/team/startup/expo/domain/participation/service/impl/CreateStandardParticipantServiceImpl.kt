@@ -12,6 +12,8 @@ import team.startup.expo.domain.participation.service.CreateStandardParticipantS
 import team.startup.expo.domain.participation.service.ParticipantRegistrationLock
 import team.startup.expo.domain.participation.service.RegisteredParticipant
 import team.startup.expo.domain.training.entity.ApplicationType
+import team.startup.expo.global.client.expo.ExpoFeature
+import team.startup.expo.global.client.expo.ExpoFeatures
 import team.startup.expo.global.exception.ExpectedException
 import team.startup.expo.global.util.CompanionInfo
 import team.startup.expo.global.util.Companions
@@ -45,6 +47,10 @@ import java.time.LocalDateTime
  *
  * 응답의 `fieldParticipantIds`는 이번 요청으로 FIELD가 된 참가자다. 신청 서비스가 이들마다 입장 서비스에 현장등록을 알린다(Application #275).
  * FIELD 요청이 아니거나 바뀐 사람이 없으면 비어 있다.
+ *
+ * 재신청을 포함한 모든 등록은 그 구분의 등록 기능(PRE는 `PRE_REGISTRATION`, FIELD는 `FIELD_REGISTRATION`)이 켜져 있어야 하고,
+ * 동행자를 새로 만드는 요청(처음 등록·대표자 교체의 동행자, 재신청의 새 동행자)은 `COMPANION_REGISTRATION`도 켜져 있어야 한다.
+ * 꺼져 있으면 아무것도 저장하지 않고 409다.
  */
 @Service
 class CreateStandardParticipantServiceImpl(
@@ -52,13 +58,17 @@ class CreateStandardParticipantServiceImpl(
     private val registrationLock: ParticipantRegistrationLock,
 ) : CreateStandardParticipantService {
     @Transactional
-    override fun execute(reqDto: CreateStandardParticipantReqDto): CreateStandardParticipantResDto {
+    override fun execute(
+        reqDto: CreateStandardParticipantReqDto,
+        features: ExpoFeatures,
+    ): CreateStandardParticipantResDto {
         InformationJson.requireValid(reqDto.informationJson)
         QuestionSnapshot.errorOf(reqDto.questions)?.let { throw ExpectedException(HttpStatus.BAD_REQUEST, it) }
         val companions = Companions.extract(reqDto.informationJson, reqDto.questions)
         if (1 + companions.size > Companions.MAX_PARTICIPANTS) {
             throw ExpectedException(HttpStatus.BAD_REQUEST, "대표자를 포함해 최대 ${Companions.MAX_PARTICIPANTS}명까지 신청할 수 있습니다.")
         }
+        features.require(reqDto.applicationType.registrationFeature)
         val digits = PhoneNumbers.digitsOnly(reqDto.phoneNumber)
         // 표기만 다른 같은 번호의 동시 등록도 하나씩 처리해야 아래 확인이 앞선 요청의 저장을 볼 수 있다
         registrationLock.lockPhone(reqDto.expoId, digits)
@@ -68,10 +78,12 @@ class CreateStandardParticipantServiceImpl(
                 ?: PhoneNumbers.select(standardParticipantRepository.findAllByExpoIdAndDigits(reqDto.expoId, digits), reqDto.phoneNumber) {
                     it.phoneNumber
                 }
+        val fresh = existing == null || reqDto.replaceRepresentative == true
+        if (fresh && companions.isNotEmpty()) features.require(ExpoFeature.COMPANION_REGISTRATION)
         if (existing == null) return registerNew(reqDto, companions)
         if (reqDto.replaceRepresentative == true) return replace(reqDto, existing, companions)
 
-        return registerAgain(reqDto, existing, companions)
+        return registerAgain(reqDto, existing, companions, features)
     }
 
     private fun registerNew(
@@ -96,10 +108,13 @@ class CreateStandardParticipantServiceImpl(
         reqDto: CreateStandardParticipantReqDto,
         representative: StandardParticipant,
         companions: List<CompanionInfo>,
+        features: ExpoFeatures,
     ): CreateStandardParticipantResDto {
         val registered = standardParticipantRepository.findAllByRepresentativeIdOrderById(representative.id!!)
         val known = registered.map { listOf(it.name, it.occupation, it.school) }.toSet()
         val added = companions.filter { it.key !in known }
+        // 이미 있는 동행자만 다시 담은 재신청은 동행자를 새로 만들지 않으므로 동행자 기능을 보지 않는다
+        if (added.isNotEmpty()) features.require(ExpoFeature.COMPANION_REGISTRATION)
         // 이번 요청 뒤에도 일행에 남는 기존 동행자(`live`)를 저장 전에 한 번 계산해 한도에 쓴다. 이번에 다시 신청한 사람은 되살아나 센다.
         // 그 외에는 이번 `releasedParticipantIds`에 없고 저장된 `released` 표시도 없어야 센다. 아래 표시 갱신 뒤의 `!released`와 같은
         // 집합이다. `registered`에는 대표자 본인이 없고 이 대표자의 동행자만 있으므로, 대표자 본인·다른 대표자의 ID·없는 ID는 무시된다
