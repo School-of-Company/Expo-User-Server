@@ -6,7 +6,6 @@ import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import team.startup.expo.domain.participation.entity.BadgePrintResult
-import team.startup.expo.domain.participation.entity.Occupation
 import team.startup.expo.domain.participation.entity.ParticipationType
 import team.startup.expo.domain.participation.entity.StandardParticipant
 import team.startup.expo.domain.participation.entity.StandardParticipantParticipation
@@ -41,7 +40,7 @@ import java.time.ZoneId
  * 사전등록 회차는 입장 스캔이 판정해 `preregisterSessionId`로 보낸다. 참가자의 신청 회차는 신청 서비스가 입장 서비스에만
  * 알려 주므로 이 서비스는 판정하지 않고 받은 값을 그대로 남긴다. 값이 없으면 회차 없는 입장이다.
  *
- * 명찰 자동 출력 대상(연수자 전원, 일반 참가자 중 교사·예비교사)이면 같은 트랜잭션에서 출력 작업을 저장한다. 저장이 실패하면
+ * 입장한 연수자와 일반 참가자는 모두 명찰 자동 출력 대상이며 같은 트랜잭션에서 출력 작업을 저장한다. 저장이 실패하면
  * 입장도 함께 되돌린다. 작업은 (박람회, 동일인, 방문일)마다 하나라 같은 날 다른 회차로 다시 입장하거나 참가자와 연결된 연수자로
  * 입장해도 새로 만들지 않는다(`badgePrint = DUPLICATE`). 인쇄는 응답 뒤 출력대가 비동기로 한다(`BadgePrintService`).
  * `badgePrintJobId`는 새로 만든 작업, 또는 이미 있던 그날의 원본 자동 작업의 id다.
@@ -105,21 +104,17 @@ class RecordEntryServiceImpl(
                     )
                 }
                 val badge =
-                    if (participant.occupation in BADGE_OCCUPATIONS) {
-                        enqueueBadge(
-                            reqDto.expoId,
-                            "S:${participant.id}",
-                            attendanceDate,
-                            ParticipationType.STANDARD,
-                            participant.id!!,
-                            participant.name,
-                            participant.school,
-                            now,
-                        )
-                    } else {
-                        null
-                    }
-                standardResponse(participant).copy(badgePrint = badge?.result, badgePrintJobId = badge?.jobId)
+                    enqueueBadge(
+                        reqDto.expoId,
+                        "S:${participant.id}",
+                        attendanceDate,
+                        ParticipationType.STANDARD,
+                        participant.id!!,
+                        participant.name,
+                        participant.school,
+                        now,
+                    )
+                standardResponse(participant).copy(badgePrint = badge.result, badgePrintJobId = badge.jobId)
             }
 
             ParticipationType.TRAINEE -> {
@@ -247,8 +242,5 @@ class RecordEntryServiceImpl(
 
     private companion object {
         val SEOUL: ZoneId = ZoneId.of("Asia/Seoul")
-
-        // 명찰 자동 출력 대상 직업. 연수자는 직업이 없지만 모두 교원이라 전원 대상이다
-        val BADGE_OCCUPATIONS = setOf(Occupation.TEACHER, Occupation.PRE_SERVICE_TEACHER)
     }
 }
