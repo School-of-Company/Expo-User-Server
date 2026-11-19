@@ -96,7 +96,7 @@ class BadgePrintApiTests : IntegrationTestSupport() {
     }
 
     @Test
-    fun `교사 입장은 작업을 저장하고 같은 날 다른 회차 입장은 DUPLICATE이며 대상이 아니면 null이다`() {
+    fun `교사 입장은 작업을 저장하고 같은 날 다른 회차 입장은 DUPLICATE이며 다른 직업도 작업을 저장한다`() {
         val teacher = standard(Occupation.TEACHER)
         val preTeacher = standard(Occupation.PRE_SERVICE_TEACHER)
         val parent = standard(Occupation.PARENT)
@@ -104,21 +104,19 @@ class BadgePrintApiTests : IntegrationTestSupport() {
         val queued = enter(teacher).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("QUEUED")).json()
         val duplicate = enter(teacher, sessionId = 7).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("DUPLICATE")).json()
         val preQueued = enter(preTeacher).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("QUEUED")).json()
-        enter(parent)
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.badgePrint").doesNotExist())
-            .andExpect(jsonPath("$.badgePrintJobId").doesNotExist())
+        val parentQueued = enter(parent).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("QUEUED")).json()
         // 같은 회차 재입장(409)은 결과를 주지 않고 작업도 만들지 않는다
         enter(teacher, sessionId = 7).andExpect(status().isConflict).andExpect(jsonPath("$.badgePrint").doesNotExist())
 
         jdbcTemplate.queryForList("SELECT person_key FROM tb_badge_print_job ORDER BY id", String::class.java) shouldBe
-            listOf("S:${teacher.id}", "S:${preTeacher.id}")
+            listOf("S:${teacher.id}", "S:${preTeacher.id}", "S:${parent.id}")
         jdbcTemplate.queryForMap("SELECT name, school, status FROM tb_badge_print_job WHERE id = 1") shouldBe
             mapOf("name" to "참가자", "school" to "광주소프트웨어마이스터고", "status" to "WAITING")
         // 같은 날 다른 회차(DUPLICATE)도 그날의 원본 작업 id를 준다
         queued["badgePrintJobId"].asLong() shouldBe jobIdOf("S:${teacher.id}")
         duplicate["badgePrintJobId"].asLong() shouldBe jobIdOf("S:${teacher.id}")
         preQueued["badgePrintJobId"].asLong() shouldBe jobIdOf("S:${preTeacher.id}")
+        parentQueued["badgePrintJobId"].asLong() shouldBe jobIdOf("S:${parent.id}")
     }
 
     @Test
@@ -143,8 +141,7 @@ class BadgePrintApiTests : IntegrationTestSupport() {
         val linked = trainee(standardParticipantId = teacher.id)
 
         enterTrainee(linked).andExpect(jsonPath("$.badgePrint").value("QUEUED"))
-        // 직업이 대상이 아닌 참가자는 연결된 연수자와 상관없이 대상이 아니다
-        enter(teacher).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").doesNotExist())
+        enter(teacher).andExpect(status().isOk).andExpect(jsonPath("$.badgePrint").value("DUPLICATE"))
 
         count("tb_badge_print_job") shouldBe 1
     }
