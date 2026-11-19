@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.transaction.support.TransactionTemplate
 import team.startup.expo.domain.participation.service.ExpoDeletionLock
+import team.startup.expo.support.FakeExpoServer
 import team.startup.expo.support.IntegrationTestSupport
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -30,6 +31,8 @@ class TraineeResolveOrCreateApiTests : IntegrationTestSupport() {
 
     @BeforeEach
     fun setUp() {
+        FakeExpoServer.reset()
+        FakeExpoServer.register(EXPO, OTHER_EXPO)
         jdbcTemplate.execute("TRUNCATE TABLE tb_expo_deletion, tb_trainee RESTART IDENTITY CASCADE")
     }
 

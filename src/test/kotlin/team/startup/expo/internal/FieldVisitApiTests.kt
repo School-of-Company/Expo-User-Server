@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import team.startup.expo.domain.participation.entity.StandardParticipant
 import team.startup.expo.domain.participation.repository.StandardParticipantRepository
 import team.startup.expo.domain.training.entity.ApplicationType
+import team.startup.expo.support.FakeExpoServer
 import team.startup.expo.support.IntegrationTestSupport
 import tools.jackson.databind.json.JsonMapper
 import java.time.LocalDateTime
@@ -30,6 +31,8 @@ class FieldVisitApiTests : IntegrationTestSupport() {
 
     @BeforeEach
     fun clear() {
+        FakeExpoServer.reset()
+        FakeExpoServer.register(EXPO)
         jdbcTemplate.execute(
             "TRUNCATE tb_standard_participant, tb_field_visit_creation, tb_field_visit_operation, " +
                 "tb_registration_outbox RESTART IDENTITY CASCADE",

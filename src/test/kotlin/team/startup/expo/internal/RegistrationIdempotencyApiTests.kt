@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delet
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import team.startup.expo.support.FakeExpoServer
 import team.startup.expo.support.IntegrationTestSupport
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -25,6 +26,8 @@ class RegistrationIdempotencyApiTests : IntegrationTestSupport() {
 
     @BeforeEach
     fun setUp() {
+        FakeExpoServer.reset()
+        FakeExpoServer.register(EXPO)
         jdbcTemplate.execute(
             "TRUNCATE TABLE tb_expo_deletion, tb_registration_request, tb_registration_outbox, tb_trainee, tb_standard_participant " +
                 "RESTART IDENTITY CASCADE",

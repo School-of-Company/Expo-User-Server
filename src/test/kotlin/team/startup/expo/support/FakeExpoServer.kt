@@ -10,6 +10,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * Expo 서비스의 `GET /internal/expo/{expo_id}`와 `GET /internal/expo/{expo_id}/preregister-sessions/{session_id}`를
  * 실제 HTTP로 흉내 낸다. 내부 토큰이 맞아야 응답하고, 등록하지 않은 박람회나 그 박람회의 회차가 아니면 404,
  * [failureStatus]가 있으면 그 상태로 실패한다.
+ *
+ * 박람회 응답의 `features`는 Expo 카탈로그 13개 키를 모두 켠 값이며 [disableFeatures]로 끈 키만 `effectiveEnabled=false`다.
+ * [omitFeatures]가 true면 `features` 없는 구형 응답을 흉내 낸다.
  */
 object FakeExpoServer {
     const val TOKEN = "fake-expo-internal-token-0123456789abcdef"
@@ -17,6 +20,27 @@ object FakeExpoServer {
     private val periods = ConcurrentHashMap<String, Pair<String, String>>()
     private val sessions = ConcurrentHashMap<Long, String>()
     private val requests = AtomicInteger()
+    private val disabled = ConcurrentHashMap<String, Set<String>>()
+
+    private val catalog =
+        listOf(
+            "PRE_REGISTRATION",
+            "FIELD_REGISTRATION",
+            "COMPANION_REGISTRATION",
+            "QR_ADMISSION",
+            "PAPER_QR",
+            "STANDARD_PROGRAM",
+            "TRAINING_PROGRAM",
+            "STANDARD_ATTENDANCE",
+            "TRAINING_ATTENDANCE",
+            "SURVEY",
+            "SURVEY_LOTTERY",
+            "AUTO_NOTIFICATION",
+            "BULK_MESSAGE",
+        )
+
+    @Volatile
+    var omitFeatures = false
 
     @Volatile
     var failureStatus: Int? = null
@@ -47,6 +71,17 @@ object FakeExpoServer {
         periods[expoId] = startedDay to finishedDay
     }
 
+    /** 등록 기간 2030-01-01~2030-01-02로 [expoIds] 박람회를 둔다. 기간을 보지 않는 등록 테스트용이다. */
+    fun register(vararg expoIds: String) = expoIds.forEach { register(it, "2030-01-01", "2030-01-02") }
+
+    /** [expoId] 박람회의 [keys] 기능을 실효 OFF로 응답한다. */
+    fun disableFeatures(
+        expoId: String,
+        vararg keys: String,
+    ) {
+        disabled[expoId] = keys.toSet()
+    }
+
     /** [expoId] 박람회의 사전등록 회차 [sessionId]를 둔다. 다른 박람회로 조회하면 Expo처럼 404이다. */
     fun registerSession(
         expoId: String,
@@ -58,6 +93,8 @@ object FakeExpoServer {
     fun reset() {
         periods.clear()
         sessions.clear()
+        disabled.clear()
+        omitFeatures = false
         failureStatus = null
         sessionFailureStatus = null
         lastToken = null
@@ -103,7 +140,16 @@ object FakeExpoServer {
                 }
 
                 else -> {
-                    200 to """{"startedDay":"${period.first}","finishedDay":"${period.second}"}"""
+                    val off = disabled[expoId].orEmpty()
+                    val features =
+                        if (omitFeatures) {
+                            ""
+                        } else {
+                            catalog.joinToString(",", ""","features":[""", "]") {
+                                """{"key":"$it","configuredEnabled":${it !in off},"effectiveEnabled":${it !in off}}"""
+                            }
+                        }
+                    200 to """{"startedDay":"${period.first}","finishedDay":"${period.second}"$features}"""
                 }
             }
         val bytes = body.toByteArray(Charsets.UTF_8)

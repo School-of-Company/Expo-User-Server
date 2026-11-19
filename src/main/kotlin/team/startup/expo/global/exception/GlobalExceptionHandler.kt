@@ -16,7 +16,7 @@ class GlobalExceptionHandler : ResponseEntityExceptionHandler() {
     fun handleExpectedException(exception: ExpectedException): ResponseEntity<ErrorResponse> {
         val response = ResponseEntity.status(exception.status)
         exception.retryAfterSeconds?.let { response.header(HttpHeaders.RETRY_AFTER, it.toString()) }
-        return response.body(ErrorResponse(status = exception.status.value(), message = exception.message))
+        return response.body(ErrorResponse(status = exception.status.value(), message = exception.message, code = exception.code))
     }
 
     @ExceptionHandler(Exception::class)

@@ -16,6 +16,7 @@ import team.startup.expo.domain.participation.presentation.dto.request.GetEntryS
 import team.startup.expo.domain.participation.presentation.dto.request.ProjectFieldVisitReqDto
 import team.startup.expo.domain.participation.service.FieldVisitService
 import team.startup.expo.domain.participation.service.GetEntryStatusService
+import team.startup.expo.global.client.expo.ExpoPeriodReader
 import java.util.UUID
 
 @RestController
@@ -24,16 +25,20 @@ import java.util.UUID
 class InternalFieldVisitController(
     private val service: FieldVisitService,
     private val entryStatus: GetEntryStatusService,
+    private val expoPeriodReader: ExpoPeriodReader,
 ) {
     @Operation(
         summary = "방문 신청의 신규 참가자만 생성",
-        description = "같은 expo와 requestId는 최초 clientReference와 participantId 매핑을 재현하며 내용이 다르면 409입니다.",
+        description =
+            "같은 expo와 requestId는 최초 clientReference와 participantId 매핑을 재현하며 내용이 다르면 409입니다. " +
+                "새로 만들 때 FIELD_REGISTRATION(동행자가 있으면 COMPANION_REGISTRATION도)이 꺼져 있으면 409(code FEATURE_DISABLED)이고, " +
+                "기능 설정을 읽을 수 없으면 503, 없는 박람회는 404입니다.",
     )
     @PostMapping("/expos/{expoId}/field-visit-participants")
     fun create(
         @PathVariable expoId: String,
         @Valid @RequestBody body: CreateFieldVisitParticipantsReqDto,
-    ) = service.create(expoId, body)
+    ) = service.create(expoId, body, expoPeriodReader.readFeatures(expoId))
 
     @Operation(summary = "방문일 등록 상태 projection", description = "generation fencing을 적용하며 같은 세대 CANCELLED는 terminal입니다. 프로필과 QR은 변경하지 않습니다.")
     @PutMapping("/expos/{expoId}/participants/{participantId}/field-visits/{registrationId}")
